@@ -1,0 +1,212 @@
+# The whole product: runs once a day on GitHub's servers (no laptop needed).
+#
+#   track   -> tests, scrape, tag, health check, commit data/, build the page
+#   deploy  -> publish _site/ to GitHub Pages (also on unhealthy runs, so the
+#              page shows the problem)
+#   alert   -> only if something failed: open (or comment on) a GitHub issue
+#   recover -> only if everything passed: close any open alert issue
+#
+# To prove the alert works: Actions > Daily reviews tracker > Run workflow >
+# simulate = empty_result (parser finds nothing) or crash (run fails).
+name: Daily reviews tracker
+
+on:
+  schedule:
+    - cron: "17 3 * * *"        # 03:17 UTC = 08:47 IST, every day (off the busy :00 slot)
+  workflow_dispatch:
+    inputs:
+      simulate:
+        description: "Test the alert by simulating a problem"
+        type: choice
+        options: [none, empty_result, crash]
+        default: none
+      full_crawl:
+        description: "Re-walk every review page (normally only new pages are read)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "tracker/**"
+      - "site/**"
+      - "eval/**"
+      - "requirements*.txt"
+      - ".github/workflows/tracker.yml"
+
+permissions:
+  contents: read
+
+concurrency:                      # never two runs writing data/ at once
+  group: reviews-tracker
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write             # commit data/ back to the repo
+      models: read                # GitHub Models (free AI tagging) with the built-in token
+      actions: write              # re-enable this workflow so the 60-day inactivity rule can't switch it off
+    outputs:
+      health: ${{ steps.run.outputs.health }}
+      pages_ready: ${{ steps.pages.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Collect, tag and health-check reviews
+        id: run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIMULATE: ${{ inputs.simulate || 'none' }}
+        run: python -m tracker.run ${{ inputs.full_crawl && '--full' || '' }}
+
+      - name: Score tagging against the hand labels
+        if: hashFiles('eval/hand_labels.csv') != ''
+        run: |
+          python -m eval.evaluate
+          python -m tracker.run --build-only
+
+      - name: Commit data
+        run: |
+          git config user.name "reviews-tracker-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data eval
+          if git diff --cached --quiet; then echo "Nothing to commit"; exit 0; fi
+          git commit -q -m "data: run $(date -u +%F) (${{ steps.run.outputs.new_reviews || 0 }} new reviews)"
+          for i in 1 2 3; do
+            git pull --rebase -q && git push -q && exit 0
+            sleep $((i * 5))
+          done
+          echo "::error::could not push data after 3 attempts"; exit 1
+
+      - name: Upload page
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Mark page ready
+        id: pages
+        run: echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the scheduler alive
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tracker.yml/enable"
+
+      - name: Optional external heartbeat (dead-man's switch)
+        if: steps.run.outputs.health == 'ok'
+        continue-on-error: true
+        env:
+          HEARTBEAT_URL: ${{ secrets.HEARTBEAT_URL }}
+        run: |
+          if [ -n "$HEARTBEAT_URL" ]; then curl -fsS -m 10 --retry 3 "$HEARTBEAT_URL" > /dev/null; else echo "HEARTBEAT_URL not set, skipping"; fi
+
+      - name: Save alert details
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alert-details
+          path: alert.md
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Fail the job if the run needs attention
+        if: steps.run.outputs.health == 'alert'
+        run: |
+          cat alert.md
+          echo "::error::Health check failed, see alert.md above"
+          exit 1
+
+  deploy:
+    needs: track
+    if: ${{ !cancelled() && needs.track.outputs.pages_ready == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  alert:
+    needs: [track, deploy]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: alert-details
+
+      - name: Open or update the alert issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TRACK: ${{ needs.track.result }}
+          DEPLOY: ${{ needs.deploy.result }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          LABEL="tracker-alert"
+          gh label create "$LABEL" -R "$REPO" --color d03b3b --force \
+            --description "Opened automatically when the daily reviews run fails or collects nothing"
+          {
+            if [ -f alert.md ]; then
+              cat alert.md
+            else
+              echo "The run **failed before it could finish** (crash, test failure, push or deploy error)."
+              echo
+              echo "Job results: track = \`$TRACK\`, deploy = \`$DEPLOY\`."
+            fi
+            echo
+            echo "Logs: $RUN_URL"
+            echo
+            echo "_This issue closes itself after the next healthy run._"
+          } > body.md
+          existing=$(gh issue list -R "$REPO" --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$REPO" --body-file body.md
+            echo "Commented on open alert #$existing"
+          else
+            gh issue create -R "$REPO" --label "$LABEL" --body-file body.md \
+              --title "Reviews tracker alert: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          fi
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            jq -n --arg c "Reviews tracker alert: $(head -c 1500 body.md)" '{content: $c}' \
+              | curl -fsS -m 15 -H 'Content-Type: application/json' -d @- "$DISCORD_WEBHOOK_URL" || true
+          fi
+
+  recover:
+    needs: [track, deploy]
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close open alert issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          for n in $(gh issue list -R "$REPO" --label tracker-alert --state open --json number --jq '.[].number'); do
+            gh issue close "$n" -R "$REPO" --comment "Recovered: the next run was healthy ($RUN_URL)."
+          done

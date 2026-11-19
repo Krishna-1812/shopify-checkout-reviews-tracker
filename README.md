@@ -1,0 +1,278 @@
+# Checkout reviews tracker
+
+A small product that runs by itself: every day it collects the public merchant reviews of three
+Shopify checkout apps, stores each review once, tags it with a sentiment and a main theme, checks its
+own health, and publishes a page. If a run fails, or quietly collects nothing, it opens a GitHub issue.
+When everything is fine it stays silent.
+
+| | |
+|---|---|
+| **Live page** | https://krishna-1812.github.io/shopify-checkout-reviews-tracker/ |
+| **Apps tracked** | [Kwik COD & Checkout](https://apps.shopify.com/kwikcheckout) (GoKwik) · [Razorpay COD & Magic Checkout](https://apps.shopify.com/razorpay-checkout) · [Simpl: 1-Click Checkout](https://apps.shopify.com/simpl-checkout) |
+| **Schedule** | Daily at 03:17 UTC (08:47 IST) on GitHub Actions |
+| **Cost** | ₹0: GitHub Actions, GitHub Pages and GitHub Models free tiers. No paid API, no secrets required |
+| **Tagging check** | [eval/REPORT.md](eval/REPORT.md) |
+
+```
+Shopify App Store ──► scrape ──► merge (dedupe by review id) ──► tag (AI → rules fallback)
+   (public HTML)                       data/reviews.json                │
+                                                                        ▼
+         GitHub issue ◄── alert ◄── health check ──► data/runs.json ──► build page ──► GitHub Pages
+```
+
+---
+
+## 1. How to run it, and what runs when
+
+### Automatically
+
+[`.github/workflows/tracker.yml`](.github/workflows/tracker.yml) runs every day at **03:17 UTC**. It also
+runs when code under `tracker/`, `site/` or `eval/` changes on `main`, and on demand from
+**Actions → Daily reviews tracker → Run workflow**. Four jobs:
+
+| Job | When | What it does |
+|---|---|---|
+| `track` | every run | Runs the unit tests, then `python -m tracker.run`: scrape, merge, tag, health check, build `_site/`. Then scores the tagging against the hand labels (if present), commits `data/` and `eval/` back to `main`, and uploads the page. Fails at the end if the health check said `alert`. |
+| `deploy` | after `track` has built the page, **even if `track` then failed** | Publishes `_site/` to GitHub Pages, so the page shows the problem too. |
+| `alert` | only if `track` or `deploy` failed | Opens a GitHub issue labelled `tracker-alert`, or comments on the one already open (no duplicates). Posts to Discord too if `DISCORD_WEBHOOK_URL` is set. |
+| `recover` | only if everything passed | Closes any open `tracker-alert` issue with a link to the healthy run. |
+
+A normal day reads one page per app (10 newest reviews). The crawler stops at the first page whose
+reviews are all already stored. It walks every page only on the first run, when asked (`full_crawl`),
+or by itself when it holds fewer reviews than Shopify lists. That last case is self-healing for
+missed days.
+
+**Run options** (Run workflow form): `simulate = empty_result` pretends the parser found nothing.
+`simulate = crash` makes the run fail. Both exist to prove the alert works. `full_crawl` re-reads
+every page.
+
+### Locally
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest -q                        # 52 tests, ~1 s, no network
+TAGGER=rules python -m tracker.run         # real scrape, keyword tagging, builds _site/
+python -m http.server -d _site 8000        # open http://localhost:8000
+```
+
+To use AI tagging locally, create a GitHub token with the **Models: read** permission and run
+`GITHUB_MODELS_TOKEN=... python -m tracker.run`. Other commands:
+`python -m tracker.run --full`, `python -m tracker.run --build-only`,
+`python -m tracker.run --simulate empty_result`, `python -m eval.evaluate`.
+
+### Repository layout
+
+```
+tracker/
+  config.py           apps, paths, politeness and health thresholds (the only place to change them)
+  scrape.py           fetch with retries/backoff + HTML parser (pure function, tested on saved pages)
+  store.py            load / merge / save; dedupe by Shopify review id; edit detection
+  tagging/
+    taxonomy.py       the label set: 3 sentiments, 8 themes, with definitions (shared by AI, rules, humans)
+    llm.py            GitHub Models client: batching, JSON validation, rate-limit handling
+    rules.py          keyword + star-rating tagger (fallback and baseline)
+    __init__.py       decides what to (re)tag; AI first, rules for anything left
+  health.py           the alert rules
+  aggregate.py        every number on the page (weekly series, theme mix, latest 20, run health)
+  run.py              one run, end to end (the CLI)
+site/                 the page: index.html, app.js (Chart.js), style.css, label.html (blind labelling)
+eval/                 sample.py (picks the 30), evaluate.py (scores), hand_labels.csv, REPORT.md
+data/                 reviews.json (history), runs.json (run log): written by the bot
+tests/                parser, merge, health, aggregation, tagging, evaluation (+ saved App Store pages)
+```
+
+---
+
+## 2. How it works, and the decisions behind it
+
+**Collecting.** The App Store review pages are server-rendered HTML
+(`/<app>/reviews?sort_by=newest&page=N`, 10 per page). `robots.txt` allows them. Each review block
+carries Shopify's own review id, which is the dedupe key. The parser reads only stable hooks
+(`data-review-content-id`, `aria-label="N out of 5 stars"`, `data-truncate-content-copy`), never the
+Tailwind CSS classes, which change often. Requests use a named User-Agent with a link to this repo,
+a 1.5 s gap between pages, and retries with backoff on 429/5xx. A normal run makes 3 requests; a full
+crawl makes about 47.
+
+**History and dedupe.** `data/reviews.json` holds one record per review id, with `first_seen` and
+`last_seen`. Seeing the same review again only moves `last_seen`, so a review seen on many days is
+stored and counted once. If a merchant edits a review, the new text replaces the old one, the
+review is counted once, and its tags are cleared so it gets re-tagged. Charts use the review's own
+posted date, not the day we first saw it, so a backfill puts reviews in their real weeks.
+
+**Tagging.** Every review gets a sentiment (positive / neutral / negative) and **one** main theme.
+The themes are support, setup & onboarding (incl. KYC), bugs & reliability, checkout & conversion,
+COD & RTO, pricing, features and general. I chose them after reading all 438 reviews: most reviews
+of these apps are about the support team, KYC/onboarding, or whether the checkout works. Definitions
+live once in [`tracker/tagging/taxonomy.py`](tracker/tagging/taxonomy.py). The same text feeds the
+AI prompt, the labelling page and the evaluation.
+
+- **AI:** [GitHub Models](https://docs.github.com/en/github-models) (free tier) with the workflow's
+  built-in token (`permissions: models: read`), so there is no key to create, store or leak. Reviews
+  go in batches of 15 at temperature 0, with a JSON reply format. Any label outside the allowed set
+  is rejected. The model is picked from a preference list checked against the live catalog, so a
+  retired model does not break the run.
+- **Rules fallback:** if the AI is unavailable (quota, outage, no token), the keyword and star-rating
+  tagger covers the gap. Those reviews are upgraded to AI tags on a later run. A tagging problem
+  never fails a run; it shows as a warning on the page.
+- **Rating-only reviews** (133 of 438 have no text) take their sentiment from the stars and the
+  theme "general". They are left out of the theme-mix chart, which says so on the page.
+- **Cost control:** each review is tagged once and cached. A normal day sends 0–1 requests.
+
+**Checking the tagging.** [`eval/sample.py`](eval/sample.py) picks 30 written reviews, stratified by
+app and star band. A purely random 30 would be ~90% "thanks Nikita, great support". These were
+labelled by hand on [`label.html`](https://krishna-1812.github.io/shopify-checkout-reviews-tracker/label.html),
+which hides the tracker's tags so the human isn't anchored. [`eval/evaluate.py`](eval/evaluate.py)
+compares them with the stored tags. It also scores the rules tagger alone as a baseline, so you can
+see what the AI adds. Results and the two highlighted misses are on the page and in
+[eval/REPORT.md](eval/REPORT.md).
+
+**The alert, and why "0 new reviews" is not the signal.** On a normal day there may be no new
+reviews (Razorpay gets a few a month), and Simpl has **no reviews at all**. So "collected 0" can't be
+the alarm, or it would fire every day. Each review page states how many reviews Shopify holds
+("Reviews (398)"). [`tracker/health.py`](tracker/health.py) compares what was parsed against that
+number:
+
+| Situation | Verdict |
+|---|---|
+| Shopify lists N > 0 reviews but the parser found 0 on page 1 | **alert**: quietly collected nothing |
+| The review count can't be read from the page | **alert**: the layout changed |
+| A review block is missing its id, date or stars | **alert**: the markup drifted |
+| After a full crawl we hold < 95% of what Shopify lists | **alert**: reviews are being missed |
+| A page can't be fetched after retries (403/429/5xx/timeout) | **alert** |
+| Tests fail, the run crashes, the data push or the Pages deploy fails | **alert** (the job fails) |
+| No new reviews today; Simpl lists 0 and we parsed 0 | silent: healthy |
+| AI tagger unavailable, rules used | silent: warning on the page only |
+
+---
+
+## 3. Where the data and keys live, and who can see them
+
+| What | Where | Who can see it |
+|---|---|---|
+| Review history | `data/reviews.json` in this repo (git history = full audit trail and backup) | Anyone: the repo is public. It contains only what Shopify already shows publicly (store name, country, text, stars). |
+| Run log | `data/runs.json` (last 400 runs) | Anyone |
+| The page | GitHub Pages, built from `data/` on each run | Anyone |
+| Alerts | GitHub issues labelled `tracker-alert` | Anyone can read. Repo watchers (the owner by default) get an email/notification. |
+| `GITHUB_TOKEN` | Created by GitHub for each run, scoped to this repo, expires when the job ends | Nobody. It's never printed or stored. Each job asks only for what it needs: `contents: write` to commit data, `models: read` for AI, `issues: write` for alerts, `pages: write` to deploy. |
+| Optional `DISCORD_WEBHOOK_URL`, `HEARTBEAT_URL` | Repository → Settings → Secrets and variables → Actions | Encrypted. Only workflows can read them; GitHub masks them in logs. Repo admins can replace them but not read them. |
+| Local AI token (`GITHUB_MODELS_TOKEN`) | Your shell environment only; `.env` is git-ignored | You |
+
+There are **no API keys in the code or the repo**. A fork can't use this repo's secrets, and pull
+requests from forks don't get write permissions.
+
+---
+
+## 4. What will break first, and how I'd find out
+
+In rough order of likelihood:
+
+1. **Shopify changes the review page markup.** This is the most likely failure. It shows up as
+   "listed N but parsed 0", "count unreadable" or "malformed blocks", so **the alert fires the same
+   day**. Fix: save the new page as a fixture in `tests/fixtures/`, update `scrape.py`, run the tests.
+2. **Shopify starts blocking or rate-limiting GitHub's IP ranges** (403/429, a bot wall). The fetch
+   fails after retries, so **the alert fires**. Fix: slow down, or run from a fixed IP (see §5).
+3. **The GitHub Models free tier changes** (quota, model retired, permission renamed). This does
+   *not* fail the run by design: tags fall back to rules. You'd see it as **"AI tagger: unavailable"**
+   in the run-health panel and the job summary, and the rules share would grow in "How every review
+   was tagged". The 30-label evaluation would show the accuracy cost. Fix: update `TAGGER_MODELS` or
+   point `llm.py` at another free provider.
+4. **The scheduler stops running at all.** GitHub disables cron in public repos after 60 days without
+   activity, and scheduled runs can be delayed or dropped when GitHub is busy. **A job that never runs
+   can't send its own alert.** Mitigations in place:
+   - Every run commits `data/runs.json`, which counts as repository activity.
+   - Every run calls the "enable workflow" API.
+   - The page header turns **"Stale"** after 36 h without a healthy run.
+
+   For a real dead-man's switch, set `HEARTBEAT_URL` to a free [healthchecks.io](https://healthchecks.io)
+   check. It emails you when the daily ping *doesn't* arrive.
+5. **Tag drift.** The model's behaviour or the merchants' topics change, and themes stop fitting
+   (e.g. a new "settlements" complaint lands in "general"). Watch the "general" share on the theme
+   chart, and re-run the evaluation with fresh labels each quarter.
+6. **Growth.** This is not a near-term risk. 438 reviews take 270 KB, and history grows by a few
+   KB a week. Past ~50k reviews I'd move to SQLite (see §6).
+
+---
+
+## 5. Moving from GitHub Actions to a server you manage (e.g. AWS EC2)
+
+Described, not set up. The code doesn't change: `python -m tracker.run` is the whole job. What
+changes is everything GitHub Actions does around it: the schedule, the token, the push, the deploy,
+and failure handling.
+
+1. **Provision.** One `t4g.micro` (or `t3.micro`) running Ubuntu 24.04 LTS in `ap-south-1`.
+   - Security group: no inbound ports. Use SSM Session Manager instead of SSH.
+   - Enforce IMDSv2.
+   - Attach an IAM instance role with only the permissions listed below.
+   - A fixed egress IP (Elastic IP or NAT) also helps if Shopify ever rate-limits by IP.
+2. **Base setup.** `apt install python3.12-venv git`, enable `unattended-upgrades`, create a
+   non-login user `tracker`, and set the clock to UTC.
+3. **Code and data.** Clone the repo to `/opt/tracker` as `tracker`, using a GitHub **deploy key
+   with write access** (repo-scoped, not a personal token), so the box can keep committing `data/`.
+   Then create `.venv` and `pip install -r requirements.txt`.
+4. **Secrets.** Store them in **AWS SSM Parameter Store** (SecureString). The instance role can
+   read only `/tracker/*`. A wrapper exports them at run time; nothing is written to disk.
+   - `GITHUB_MODELS_TOKEN`: a fine-grained token with Models: read, replacing the per-run
+     `GITHUB_TOKEN`.
+   - `GH_ALERT_TOKEN`: Issues: write.
+   - Optional: the Discord webhook.
+5. **Wrapper script** `/opt/tracker/bin/run-daily.sh` (`set -euo pipefail`):
+   1. `git pull --rebase`
+   2. `pytest -q`
+   3. `python -m tracker.run`
+   4. `python -m eval.evaluate` (if labels exist)
+   5. Commit and push `data/` and `eval/`.
+   6. Publish `_site/`: `aws s3 sync _site s3://<bucket> --delete` behind CloudFront, or push it to
+      a `gh-pages` branch to keep GitHub Pages.
+   7. If the run printed `health=alert`, call `gh issue create` (same body as `alert.md`) and exit
+      non-zero.
+6. **Schedule.** Use a **systemd timer**, not cron: `tracker.service` runs the wrapper as `tracker`,
+   and `tracker.timer` has `OnCalendar=*-*-* 03:17:00 UTC` and `Persistent=true`, so a run missed
+   during a reboot happens on boot. Logs go to journald (`journalctl -u tracker`).
+7. **Alerting on crashes.** Add `OnFailure=tracker-alert.service` to the service. That unit opens the
+   GitHub issue or posts the webhook, so a crash, a test failure or a failed push alerts just like
+   the `alert` job does today. Put the "close on recovery" step at the end of the wrapper.
+8. **Watch the watcher.** A dead box can't alert on itself:
+   - The wrapper pings a healthchecks.io URL (or publishes a CloudWatch metric `LastSuccess`) on
+     success.
+   - A CloudWatch alarm, or healthchecks.io, emails if it doesn't arrive within 26 h.
+   - A CloudWatch `StatusCheckFailed` alarm covers the instance itself.
+   - The CloudWatch agent ships the journal for log search.
+9. **Backups.** The data is already backed up in git. If you move data off git, enable S3
+   versioning or daily EBS snapshots via Data Lifecycle Manager.
+10. **Cut over safely.**
+    - Run the EC2 job in `--simulate`/dry-run mode, or against a test branch, for 3–5 days.
+    - Diff its `data/` output against the Actions output.
+    - Then remove the `schedule:` trigger from the workflow. Keep `workflow_dispatch` for manual
+      runs and keep `ci.yml` for pull-request tests.
+    - Rollback = put the `schedule:` line back.
+
+---
+
+## 6. What I'd build next with two more days
+
+1. **Alerts on what merchants say, not just on failures.** A daily check that pings the GTM channel
+   when an app gets ≥3 negative reviews in 48 h, or when a theme's share jumps week on week. The data
+   already shows why: Razorpay got **five 1-star reviews on 28 Oct 2026 with near-identical wording**,
+   which looks like a coordinated campaign. A near-duplicate text detector would flag that.
+2. **A weekly digest.** An AI-written summary each Monday per app (top complaints with quotes, what
+   changed, notable reviews), emailed or posted to Slack, linking back to the page.
+3. **More apps, from config.** Add other checkout and COD apps (and GoKwik's other listings) by
+   adding lines to `config.APPS`, plus a daily snapshot of each listing's rating, review count and
+   pricing, to chart rating trends.
+4. **Developer response tracking.** Reply rate and time-to-reply per app (`has_reply` is already
+   collected). This measures how each vendor handles public complaints.
+5. **A stronger evaluation.** 100 labels from two people, to measure human-vs-human agreement as the
+   ceiling. Re-run on every prompt change in CI, with a per-theme confusion matrix to tune the
+   definitions.
+6. **Storage.** Move from JSON files to SQLite (still committed, or on S3) once history is large,
+   with a small query page for ad-hoc questions.
+
+---
+
+## Built with AI, owned by me
+
+The assignment expects AI tools, and I used Claude (Claude Code) to research the App Store markup
+and to write and test the code, the page and these notes. I reviewed and can explain and change every
+line. Each module starts with a docstring saying what it does and why. The 30 hand labels in
+`eval/hand_labels.csv` are my own judgement, made on the blind labelling page.

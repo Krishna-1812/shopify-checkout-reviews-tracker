@@ -1,0 +1,7 @@
+_site/
+alert.md
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env

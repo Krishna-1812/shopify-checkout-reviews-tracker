@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hand Labelling</title>
+  <meta name="description" content="Blind hand-labelling of 30 reviews to check the tracker's sentiment and theme tags.">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .q { border-top: 1px solid var(--grid); padding: 14px 0; display: grid; gap: 8px; }
+    .q:first-of-type { border-top: 0; }
+    .q.done .num { background: var(--ink); color: var(--surface); }
+    .num { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; align-items: center; justify-content: center; font-size: 12px; background: var(--chip-bg); flex: none; }
+    .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+    .opts label { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; background: var(--surface); }
+    .opts input { margin: 0; accent-color: var(--ink); }
+    .opts label:has(input:checked) { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+    .opts input:focus-visible + span { outline: 2px solid var(--link); outline-offset: 2px; }
+    .row-label { font-size: 12px; color: var(--muted); width: 72px; flex: none; padding-top: 5px; }
+    .line { display: flex; gap: 8px; align-items: flex-start; }
+    .note { font: inherit; font-size: 13px; width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); }
+    .bar { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between; margin: 0 -18px -14px; border-radius: 0 0 12px 12px; }
+    .btn { font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--ink); background: var(--ink); color: var(--surface); cursor: pointer; }
+    .btn.secondary { background: transparent; color: var(--ink); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    textarea.csv { width: 100%; height: 160px; font: 12px ui-monospace, monospace; margin-top: 8px; background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div>
+      <h1>Hand-label 30 reviews</h1>
+      <p class="lede">Tag each review the way you would if no tracker existed. The tracker's own tags are deliberately
+        hidden so they can't influence you. Your answers are kept in this browser until you download them.</p>
+    </div>
+    <a class="status" href="./">← Back to the tracker</a>
+  </header>
+
+  <section class="panel">
+    <details class="defs" open><summary>Definitions (the same ones the tracker uses)</summary>
+      <dl id="defs"></dl>
+      <p class="sub" id="rules"></p>
+    </details>
+  </section>
+
+  <section class="panel">
+    <div id="questions"></div>
+    <div class="bar">
+      <span id="progress" class="sub">0 of 30 labelled</span>
+      <span>
+        <button class="btn secondary" type="button" id="reset">Clear all</button>
+        <button class="btn secondary" type="button" id="show">Show CSV</button>
+        <button class="btn" type="button" id="download" disabled>Download hand_labels.csv</button>
+      </span>
+    </div>
+    <textarea class="csv" id="csv" readonly hidden aria-label="CSV of your labels"></textarea>
+    <p class="sub">Next: commit the file as <code>eval/hand_labels.csv</code> (GitHub: Add file → Upload files → into the <code>eval</code> folder). The next run scores the tracker against it and publishes the result on the main page.</p>
+  </section>
+</div>
+<script>
+(function () {
+  "use strict";
+  let THEMES = {};   // filled from data.json, which is generated from tracker/tagging/taxonomy.py
+  const SENTS = { positive: "Positive", neutral: "Neutral", negative: "Negative" };
+  const KEY = "crt-hand-labels-v1";
+  const APPS = { "kwikcheckout": "Kwik COD & Checkout", "razorpay-checkout": "Razorpay Magic Checkout", "simpl-checkout": "Simpl" };
+  let sample = [], labels = {};
+
+  try { labels = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { labels = {}; }
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(labels)); } catch (e) { /* blocked */ } };
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v === true ? "" : v);
+    }
+    kids.flat().forEach((c) => c !== null && c !== undefined && n.append(c instanceof Node ? c : document.createTextNode(String(c))));
+    return n;
+  }
+  document.getElementById("rules").textContent =
+    "Sentiment: positive = satisfied overall; neutral = mixed (praise and complaint of similar weight) or no judgement; negative = dissatisfied overall. The text decides, stars only break ties. Theme: the ONE topic that caused the rating or takes most of the text.";
+
+  function options(name, map, current, onpick) {
+    return el("div", { class: "opts", role: "radiogroup" }, Object.entries(map).map(([k, v]) => {
+      const input = el("input", { type: "radio", name, value: k, checked: current === k, onchange: () => onpick(k) });
+      return el("label", { title: Array.isArray(v) ? v[1] : null }, input, el("span", null, Array.isArray(v) ? v[0] : v));
+    }));
+  }
+  function render() {
+    const box = document.getElementById("questions");
+    box.replaceChildren(...sample.map((r, i) => {
+      const lab = labels[r.id] || {};
+      const q = el("div", { class: "q" + (lab.sentiment && lab.theme ? " done" : ""), id: "q-" + r.id });
+      const update = (k, v) => { labels[r.id] = Object.assign({}, labels[r.id], { [k]: v }); persist(); q.classList.toggle("done", !!(labels[r.id].sentiment && labels[r.id].theme)); progress(); };
+      q.append(
+        el("div", { class: "review-meta" }, el("span", { class: "num" }, i + 1),
+          el("span", { class: "stars", "aria-label": `${r.rating} out of 5 stars` }, "★".repeat(r.rating), el("span", { class: "off" }, "★".repeat(5 - r.rating))),
+          el("span", null, APPS[r.app] || r.app), el("span", null, r.date),
+          el("a", { href: r.url, target: "_blank", rel: "noopener" }, "View on Shopify ↗")),
+        el("p", { class: "review-text" }, r.text),
+        el("div", { class: "line" }, el("span", { class: "row-label" }, "Sentiment"), options("s-" + r.id, SENTS, lab.sentiment, (v) => update("sentiment", v))),
+        el("div", { class: "line" }, el("span", { class: "row-label" }, "Theme"), options("t-" + r.id, THEMES, lab.theme, (v) => update("theme", v))),
+        el("div", { class: "line" }, el("span", { class: "row-label" }, "Note"),
+          el("input", { class: "note", type: "text", placeholder: "optional: why, if it was a close call", value: lab.note || "", oninput: (e) => update("note", e.target.value) })));
+      return q;
+    }));
+    progress();
+  }
+  function done() { return sample.filter((r) => labels[r.id] && labels[r.id].sentiment && labels[r.id].theme).length; }
+  function csv() {
+    const esc = (s) => `"${String(s || "").replace(/"/g, '""')}"`;
+    return ["id,human_sentiment,human_theme,note"].concat(sample.map((r) => {
+      const l = labels[r.id] || {};
+      return [r.id, l.sentiment || "", l.theme || "", esc(l.note)].join(",");
+    })).join("\n") + "\n";
+  }
+  function progress() {
+    const n = done();
+    document.getElementById("progress").textContent = `${n} of ${sample.length} labelled`;
+    document.getElementById("download").disabled = n < sample.length;
+    const ta = document.getElementById("csv");
+    if (!ta.hidden) ta.value = csv();
+  }
+  document.getElementById("download").addEventListener("click", () => {
+    const url = URL.createObjectURL(new Blob([csv()], { type: "text/csv" }));
+    const a = el("a", { href: url, download: "hand_labels.csv" });
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  document.getElementById("show").addEventListener("click", () => { const ta = document.getElementById("csv"); ta.hidden = !ta.hidden; ta.value = csv(); });
+  document.getElementById("reset").addEventListener("click", () => { if (confirm("Clear all 30 labels?")) { labels = {}; persist(); render(); } });
+
+  Promise.all(["label-sample.json", "data.json"].map((u) => fetch(u, { cache: "no-cache" }).then((r) => r.json())))
+    .then(([s, data]) => {
+      sample = s;
+      THEMES = Object.fromEntries(Object.entries(data.themes).map(([k, t]) => [k, [t.label, t.definition]]));
+      document.getElementById("defs").replaceChildren(...Object.values(THEMES).flatMap(([l, d]) => [el("dt", null, l), el("dd", null, d)]));
+      render();
+    })
+    .catch((e) => { document.getElementById("questions").textContent = "Could not load the sample: " + e.message; });
+})();
+</script>
+</body>
+</html>

@@ -445,5 +445,92 @@
   },
   "status": "ok",
   "problems": []
+ },
+ {
+  "run_id": "44730394889",
+  "run_url": "https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/actions/runs/44730394889",
+  "trigger": "schedule",
+  "simulate": null,
+  "started_at": "2026-11-20T11:47:11+00:00",
+  "finished_at": "2026-11-20T11:47:14+00:00",
+  "apps": {
+   "kwikcheckout": {
+    "mode": "incremental",
+    "pages_fetched": 2,
+    "parsed": 20,
+    "first_page_count": 10,
+    "declared_total": 398,
+    "overall_rating": 4.6,
+    "rating_counts": {
+     "5": 363,
+     "4": 10,
+     "3": 2,
+     "2": 0,
+     "1": 23
+    },
+    "malformed": 0,
+    "new": 1,
+    "edited": 0,
+    "stored_total": 398,
+    "error": null
+   },
+   "razorpay-checkout": {
+    "mode": "incremental",
+    "pages_fetched": 1,
+    "parsed": 10,
+    "first_page_count": 10,
+    "declared_total": 40,
+    "overall_rating": 1.9,
+    "rating_counts": {
+     "5": 12,
+     "4": 6,
+     "3": 0,
+     "2": 1,
+     "1": 21
+    },
+    "malformed": 0,
+    "new": 0,
+    "edited": 0,
+    "stored_total": 40,
+    "error": null
+   },
+   "simpl-checkout": {
+    "mode": "full",
+    "pages_fetched": 1,
+    "parsed": 0,
+    "first_page_count": 0,
+    "declared_total": 0,
+    "overall_rating": 0.0,
+    "rating_counts": {
+     "5": 0,
+     "4": 0,
+     "3": 0,
+     "2": 0,
+     "1": 0
+    },
+    "malformed": 0,
+    "new": 0,
+    "edited": 0,
+    "stored_total": 0,
+    "error": null
+   }
+  },
+  "totals": {
+   "parsed": 30,
+   "new": 1,
+   "edited": 0,
+   "stored": 438
+  },
+  "tagging": {
+   "llm_tagged": 0,
+   "rules_tagged": 0,
+   "no_text_tagged": 1,
+   "pending_upgrade": 0,
+   "llm_calls": 0,
+   "llm_model": null,
+   "llm_status": "not needed"
+  },
+  "status": "ok",
+  "problems": []
  }
 ]

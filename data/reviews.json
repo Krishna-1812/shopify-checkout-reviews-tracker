@@ -8883,6 +8883,27 @@
   "tag_version": "llm-v1"
  },
  {
+  "id": "2319412",
+  "app": "kwikcheckout",
+  "url": "https://apps.shopify.com/reviews/2319412",
+  "rating": 5,
+  "date": "2026-08-12",
+  "store": "MomzCradle",
+  "country": "India",
+  "usage": "About 1 year using the app",
+  "text": "",
+  "has_reply": false,
+  "content_hash": "c9cbc6e9cca4defb",
+  "first_seen": "2026-11-20",
+  "last_seen": "2026-11-20",
+  "sentiment": "positive",
+  "theme": "general",
+  "tag_source": "stars",
+  "tag_model": "no-text-v1",
+  "tag_version": "no-text-v1",
+  "tag_reason": "no text; from stars"
+ },
+ {
   "id": "2320581",
   "app": "razorpay-checkout",
   "url": "https://apps.shopify.com/reviews/2320581",

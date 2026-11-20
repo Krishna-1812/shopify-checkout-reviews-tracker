@@ -43,13 +43,19 @@ class Provider:
     name: str
     base_url: str              # OpenAI-compatible base, without /chat/completions
     key_env: str
-    models: str                # comma-separated preference list
+    models: str                # comma-separated fallback preference list
     min_gap_seconds: float     # spacing between calls to stay under the free RPM
+    auto_pattern: str = ""     # regex: prefer the newest listed model matching this
+
+
+class ModelGone(RuntimeError):
+    """This model is refused (retired, not offered to new users); try the next one."""
 
 
 PROVIDERS: tuple[Provider, ...] = (
     Provider("gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY",
-             "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash", 7.0),
+             "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash", 7.0,
+             auto_pattern=r"^gemini-(\d+(?:\.\d+)?)-flash$"),
     Provider("groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY",
              "llama-3.3-70b-versatile,openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3-32b", 2.5),
 )
@@ -111,6 +117,19 @@ def _parse_json(content: str) -> dict:
     return json.loads(content[start:end + 1])
 
 
+def rank_models(listed: set[str], preferred: list[str], auto_pattern: str = "") -> list[str]:
+    """Newest auto-matched listed models first, then listed preferences, then unlisted preferences."""
+    auto: list[str] = []
+    if auto_pattern and listed:
+        rx = re.compile(auto_pattern)
+        hits = [(m, rx.match(m)) for m in listed]
+        def version(match):  # "3.8" -> (3, 8)
+            return tuple(int(x) for x in match.group(1).split("."))
+        auto = [m for m, mt in sorted(((m, mt) for m, mt in hits if mt), key=lambda x: version(x[1]), reverse=True)]
+    ranked = auto + [m for m in preferred if m in listed] + [m for m in preferred if m not in listed]
+    return list(dict.fromkeys(ranked))   # de-duplicate, keep order
+
+
 class LLMTagger:
     def __init__(self, provider: Provider | None = None, key: str | None = None, models: str | None = None):
         if provider is None:
@@ -120,6 +139,7 @@ class LLMTagger:
         prefs = models or os.environ.get("TAGGER_MODELS") or (provider.models if provider else "")
         self.preferred = [m.strip() for m in prefs.split(",") if m.strip()]
         self.model: str | None = None
+        self.candidates: list[str] = []
         self.calls = 0
         self.use_json_mode = True
         self._last_call = 0.0
@@ -136,22 +156,38 @@ class LLMTagger:
         return f"{self.provider.name}:{self.model}" if self.provider and self.model else None
 
     def pick_model(self) -> str:
-        """First preferred model the provider's /models list offers (else the first preference)."""
+        """Choose the model, using the provider's live /models list.
+
+        Model names go stale fast (the first Gemini choice here was listed but
+        refused to new users within months), so for providers with an
+        ``auto_pattern`` the newest matching listed model comes first, then the
+        hand-written preferences. If a model is refused, ``next_model`` moves on.
+        """
         if self.model:
             return self.model
+        listed: set[str] = set()
         try:
             resp = self.session.get(f"{self.provider.base_url}/models", timeout=20)
-            if resp.status_code == 200:
-                ids = {str(m.get("id", "")).removeprefix("models/") for m in resp.json().get("data", [])}
-                self.model = next((m for m in self.preferred if m in ids), None)
-                if not self.model:
-                    log.warning("none of %s offered by %s; it lists e.g. %s",
-                                self.preferred, self.provider.name, sorted(ids)[:12])
-            elif resp.status_code in (401, 403):
+            if resp.status_code in (401, 403):
                 raise LLMUnavailable(f"{self.provider.name} rejected the key (HTTP {resp.status_code})")
+            if resp.status_code == 200:
+                listed = {str(m.get("id", "")).removeprefix("models/") for m in resp.json().get("data", [])}
         except (requests.RequestException, ValueError, AttributeError) as exc:
             log.warning("could not list %s models: %s", self.provider.name, exc)
-        self.model = self.model or self.preferred[0]
+        self.candidates = rank_models(listed, self.preferred, self.provider.auto_pattern)
+        if listed and not any(c in listed for c in self.candidates):
+            log.warning("none of %s offered by %s; it lists e.g. %s",
+                        self.preferred, self.provider.name, sorted(listed)[:12])
+        self.model = self.candidates[0]
+        log.info("%s model candidates: %s", self.provider.name, self.candidates[:5])
+        return self.model
+
+    def next_model(self, reason: str) -> str:
+        log.warning("%s refused model %s (%s); trying the next one", self.provider.name, self.model, reason[:160])
+        i = self.candidates.index(self.model) if self.model in self.candidates else -1
+        if i + 1 >= len(self.candidates):
+            raise LLMUnavailable(f"{self.provider.name}: no usable model ({reason[:200]})")
+        self.model = self.candidates[i + 1]
         return self.model
 
     def _post(self, payload: dict) -> dict:
@@ -179,8 +215,9 @@ class LLMTagger:
                     raise LLMUnavailable(f"{self.provider.name} returned a non-API reply: {body!r}")
             if resp.status_code in (401, 403):
                 raise LLMUnavailable(f"{self.provider.name} HTTP {resp.status_code}: {body}")
-            if resp.status_code in (404, 410):
-                raise LLMUnavailable(f"{self.provider.name} model/endpoint gone (HTTP {resp.status_code}): {body}")
+            if resp.status_code in (404, 410) or (resp.status_code == 400 and "model" in body.lower()
+                                                   and ("not found" in body.lower() or "no longer" in body.lower())):
+                raise ModelGone(f"HTTP {resp.status_code}: {body}")
             if resp.status_code == 429:
                 wait = float(resp.headers.get("retry-after") or 30 * attempt)
                 if wait > 120 or "per day" in body.lower() or "daily" in body.lower():
@@ -209,7 +246,12 @@ class LLMTagger:
         }
         if self.use_json_mode:
             payload["response_format"] = {"type": "json_object"}
-        data = self._post(payload)
+        while True:
+            try:
+                data = self._post(payload)
+                break
+            except ModelGone as exc:
+                payload["model"] = self.next_model(str(exc))   # raises LLMUnavailable when none left
         parsed = _parse_json(data["choices"][0]["message"]["content"])
         wanted = {r["id"] for r in batch}
         out: dict[str, dict] = {}

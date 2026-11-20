@@ -177,3 +177,31 @@ def test_missing_key_is_not_a_health_warning():
     from tracker import health
     r = {"apps": {}, "tagging": {"llm_status": "off (no AI key set: add GEMINI_API_KEY or GROQ_API_KEY)"}}
     assert health.evaluate(r) == []
+
+
+def test_rank_models_prefers_newest_listed_flash():
+    listed = {"gemini-2.5-flash", "gemini-3.8-flash", "gemini-3.10-flash", "gemini-3.8-flash-lite",
+              "gemini-4-pro", "text-embedding-005"}
+    ranked = llm.rank_models(listed, ["gemini-2.5-flash", "gemini-2.0-flash"], llm.PROVIDERS[0].auto_pattern)
+    assert ranked[:3] == ["gemini-3.10-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
+    assert ranked[-1] == "gemini-2.0-flash"          # unlisted preference kept as last resort
+    assert llm.rank_models(set(), ["a", "b"]) == ["a", "b"]
+
+
+def test_refused_model_falls_through_to_next(monkeypatch):
+    """Gemini listed gemini-2.5-flash but answered 404 'no longer available to new users'."""
+    t = llm.LLMTagger(provider=llm.Provider("x", "https://x", "X_KEY", "old", 0), key="k")
+    t.model, t.candidates = "old", ["old", "new"]
+    ok = ('{"choices": [{"message": {"content": "{\\"results\\": [{\\"id\\": \\"1\\", '
+          '\\"sentiment\\": \\"negative\\", \\"theme\\": \\"support\\"}]}"}}]}')
+    models_tried = []
+
+    def post(url, json, timeout):
+        models_tried.append(json["model"])
+        if json["model"] == "old":
+            return FakeResp(404, "This model models/old is no longer available to new users")
+        return FakeResp(200, ok)
+    monkeypatch.setattr(t.session, "post", post)
+    out = t.tag_batch([rv("1", "slow support")], {})
+    assert models_tried == ["old", "new"]
+    assert out["1"]["tag_model"] == "x:new" and t.model == "new"

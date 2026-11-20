@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from dataclasses import asdict, dataclass
 
 from .. import config
@@ -25,6 +26,10 @@ log = logging.getLogger(__name__)
 
 NO_TEXT_VERSION = "no-text-v1"
 MAX_LLM_REVIEWS_PER_RUN = 600   # covers a full backfill; normal days send a handful
+# Free tiers throttle hard. AI tagging stops after this many seconds so a slow
+# backfill can never push the job into its timeout (which would be a false
+# alert); whatever is left gets rules tags now and is upgraded on later runs.
+AI_TIME_BUDGET_SECONDS = float(os.environ.get("AI_TIME_BUDGET_SECONDS", 480))
 
 
 @dataclass
@@ -81,7 +86,12 @@ def tag_all(store: dict[str, dict], tagger: llm.LLMTagger | None = None) -> TagS
     if queue and use_llm and tagger.configured:
         stats.llm_status = "ok"
         todo = queue[:MAX_LLM_REVIEWS_PER_RUN]
+        deadline = time.monotonic() + AI_TIME_BUDGET_SECONDS
         for i in range(0, len(todo), llm.BATCH_SIZE):
+            if time.monotonic() > deadline:
+                stats.llm_status = "ok (time budget reached; the rest continue next run)"
+                log.info("AI time budget reached after %d reviews", stats.llm_tagged)
+                break
             batch = todo[i:i + llm.BATCH_SIZE]
             try:
                 tags = tagger.tag_batch(batch, app_names)

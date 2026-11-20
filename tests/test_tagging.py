@@ -205,3 +205,13 @@ def test_refused_model_falls_through_to_next(monkeypatch):
     out = t.tag_batch([rv("1", "slow support")], {})
     assert models_tried == ["old", "new"]
     assert out["1"]["tag_model"] == "x:new" and t.model == "new"
+
+
+def test_ai_time_budget_stops_cleanly(monkeypatch):
+    monkeypatch.setenv("TAGGER", "auto")
+    monkeypatch.setattr(tagging, "AI_TIME_BUDGET_SECONDS", -1)   # already past the deadline
+    store = {str(i): rv(str(i), "support slow", 1) for i in range(3)}
+    t = FakeTagger()
+    s = tagging.tag_all(store, t)
+    assert t.calls == 0 and s.rules_tagged == 3 and s.pending_upgrade == 3
+    assert s.llm_status.startswith("ok (time budget")

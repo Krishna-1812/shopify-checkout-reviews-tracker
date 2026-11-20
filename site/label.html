@@ -5,63 +5,229 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hand Labelling</title>
   <meta name="description" content="Blind hand-labelling of 30 reviews to check the tracker's sentiment and theme tags.">
+  <meta name="theme-color" content="#f5f6fa">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232a78d6'/%3E%3Cstop offset='1' stop-color='%231baf7a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M8 20l5-6 4 4 7-8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap">
   <link rel="stylesheet" href="style.css">
   <style>
-    .q { border-top: 1px solid var(--grid); padding: 14px 0; display: grid; gap: 8px; }
-    .q:first-of-type { border-top: 0; }
-    .q.done .num { background: var(--ink); color: var(--surface); }
-    .num { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; align-items: center; justify-content: center; font-size: 12px; background: var(--chip-bg); flex: none; }
+    /* page-specific pieces; tokens and shared parts come from style.css */
+    .hero { padding: 34px 0 30px; }
+    .hero h1 { font-size: clamp(34px, 5.4vw, 58px); }
+    .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+    .fact { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--ink-2);
+      background: rgba(255, 255, 255, 0.75); border: 1px solid var(--border); backdrop-filter: blur(8px); }
+    .fact svg { width: 15px; height: 15px; color: var(--link); }
+
+    /* sticky progress bar */
+    .progress-bar { gap: 14px; padding: 8px 8px 8px 12px; }
+    .prog { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+    .ring { width: 40px; height: 40px; flex: none; transform: rotate(-90deg); }
+    .ring circle { fill: none; stroke-width: 4; }
+    .ring .track { stroke: var(--surface-3); }
+    .ring .fill { stroke: url(#ringGrad); stroke-linecap: round; transition: stroke-dashoffset .6s var(--ease); }
+    .prog-text { flex: none; line-height: 1.25; }
+    .prog-text strong { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+    .prog-text span { font-size: 12px; color: var(--muted); }
+    .dots { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-left: 6px; }
+    .dots button { width: 12px; height: 12px; border-radius: 4px; border: 0; padding: 0; cursor: pointer; background: var(--surface-3);
+      box-shadow: inset 0 0 0 1px var(--border); transition: transform .2s var(--ease), background .2s; }
+    .dots button:hover { transform: scale(1.3); }
+    .dots button.part { background: color-mix(in srgb, #1baf7a 35%, #fff); }
+    .dots button.done { background: var(--brand-grad); box-shadow: none; }
+    .actions { display: flex; gap: 6px; flex: none; }
+    .btn { font: inherit; font-size: 13.5px; font-weight: 600; padding: 9px 14px; border-radius: 11px; border: 1px solid var(--border-strong);
+      background: #fff; color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+      transition: transform .2s var(--ease), box-shadow .2s, background .2s, opacity .2s; }
+    .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow); }
+    .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); box-shadow: 0 8px 20px -10px rgba(13, 18, 34, .6); }
+    .btn.quiet { border-color: transparent; background: transparent; color: var(--ink-2); }
+    .btn.quiet:hover { background: var(--surface-3); box-shadow: none; }
+    .btn:disabled { opacity: .38; cursor: not-allowed; }
+    .btn svg { width: 15px; height: 15px; }
+
+    /* guide */
+    .guide-grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 22px; }
+    .guide h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+    .sent-cards { display: grid; gap: 8px; }
+    .sent-card { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; padding: 12px 14px; border-radius: 14px;
+      background: color-mix(in srgb, var(--s) 7%, #fff); border: 1px solid color-mix(in srgb, var(--s) 18%, transparent); }
+    .sent-card i { width: 10px; height: 10px; border-radius: 50%; background: var(--s); margin-top: 6px; grid-row: span 2; }
+    .sent-card b { font-size: 14px; }
+    .sent-card span { font-size: 13px; color: var(--ink-2); }
+    .theme-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .theme-card { padding: 11px 13px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
+    .theme-card b { display: block; font-size: 13.5px; margin-bottom: 2px; }
+    .theme-card span { font-size: 12.5px; color: var(--ink-2); line-height: 1.45; display: block; }
+    .rules { margin: 16px 0 0; padding: 14px 16px; border-radius: 14px; background: linear-gradient(135deg, rgba(42,120,214,.06), rgba(27,175,122,.05)); border: 1px solid rgba(42,120,214,.12); font-size: 13px; color: var(--ink-2); }
+    .rules p { margin: 0 0 6px; }
+    .rules ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+    .guide details > summary { margin-bottom: 4px; }
+
+    /* question cards */
+    .qs { display: grid; gap: 16px; }
+    .q { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow);
+      scroll-margin-top: 96px; display: grid; gap: 14px; transition: border-color .3s, box-shadow .3s; }
+    .q.done { border-color: rgba(27, 175, 122, .35); box-shadow: 0 0 0 3px rgba(27, 175, 122, .08), var(--shadow); }
+    .q-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 12.5px; color: var(--muted); }
+    .num { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-weight: 650; font-size: 13px; color: var(--ink);
+      background: var(--surface-3); flex: none; transition: background .3s; }
+    .q.done .num { background: var(--brand-grad); color: #fff; }
+    .num svg { width: 16px; height: 16px; }
+    .app-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--ink-2); padding: 3px 9px; border-radius: 99px; background: var(--surface-2); }
+    .q-top .spacer { flex: 1; }
+    .q-top a { font-weight: 500; text-decoration: none; }
+    .q-top a:hover { text-decoration: underline; }
+    .quote { position: relative; margin: 0; padding: 4px 0 0 30px; font-size: 16px; line-height: 1.62; color: var(--ink); white-space: pre-line; overflow-wrap: anywhere; }
+    .quote::before { content: "\201C"; position: absolute; left: -1px; top: -4px; font-family: var(--serif); font-size: 50px; line-height: 1; color: color-mix(in srgb, var(--c) 55%, #fff); }
+    .quote.clamp { display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; }
+    .more { font: inherit; font-size: 12.5px; font-weight: 600; border: 0; background: none; color: var(--link); padding: 0 0 0 30px; cursor: pointer; justify-self: start; margin-top: -6px; }
+    .answers { display: grid; gap: 12px; padding-top: 14px; border-top: 1px solid var(--grid); }
+    .field { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: start; }
+    .field-label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); padding-top: 8px; }
     .opts { display: flex; flex-wrap: wrap; gap: 6px; }
-    .opts label { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; background: var(--surface); }
-    .opts input { margin: 0; accent-color: var(--ink); }
-    .opts label:has(input:checked) { background: var(--ink); color: var(--surface); border-color: var(--ink); }
-    .opts input:focus-visible + span { outline: 2px solid var(--link); outline-offset: 2px; }
-    .row-label { font-size: 12px; color: var(--muted); width: 72px; flex: none; padding-top: 5px; }
-    .line { display: flex; gap: 8px; align-items: flex-start; }
-    .note { font: inherit; font-size: 13px; width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); }
-    .bar { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between; margin: 0 -24px -18px; border-radius: 0 0 var(--radius) var(--radius); }
-    .btn { font: inherit; font-size: 14px; font-weight: 600; padding: 9px 15px; border-radius: 10px; border: 1px solid var(--ink); background: var(--ink); color: var(--surface); cursor: pointer; }
-    .btn.secondary { background: transparent; color: var(--ink); }
-    .btn:disabled { opacity: .4; cursor: not-allowed; }
-    textarea.csv { width: 100%; height: 160px; font: 12px ui-monospace, monospace; margin-top: 8px; background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+    .opt { position: relative; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; padding: 7px 12px; border-radius: 11px;
+      border: 1px solid var(--border-strong); background: #fff; color: var(--ink-2); cursor: pointer; user-select: none;
+      transition: background .15s, border-color .15s, color .15s, transform .15s var(--ease); }
+    .opt:hover { border-color: var(--ink-2); color: var(--ink); }
+    .opt:active { transform: scale(.97); }
+    .opt input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+    .opt:has(input:focus-visible) { outline: 2px solid var(--link); outline-offset: 2px; }
+    .opt i { width: 9px; height: 9px; border-radius: 50%; background: var(--s); }
+    .sent .opt:has(input:checked) { background: color-mix(in srgb, var(--s) 12%, #fff); border-color: var(--s); color: var(--ink); box-shadow: inset 0 0 0 1px var(--s); }
+    .theme .opt:has(input:checked) { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .theme-def { grid-column: 2; font-size: 12.5px; color: var(--muted); margin: -4px 0 0; min-height: 1em; }
+    .theme-def.hint { font-style: italic; opacity: .8; }
+    .note { font: inherit; font-size: 13.5px; width: 100%; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 11px; background: var(--surface-2); color: var(--ink);
+      transition: border-color .2s, background .2s, box-shadow .2s; }
+    .note:focus { outline: none; background: #fff; border-color: var(--link); box-shadow: 0 0 0 3px rgba(42, 120, 214, .14); }
+
+    /* finish */
+    .finish { margin-top: 22px; text-align: center; padding: 34px 24px; position: relative; overflow: hidden; }
+    .finish::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+      background: radial-gradient(420px 200px at 50% 0%, rgba(27,175,122,.12), transparent 70%); }
+    .finish > * { position: relative; }
+    .badge-big { width: 64px; height: 64px; border-radius: 20px; margin: 0 auto 14px; display: grid; place-items: center; background: var(--surface-3); color: var(--muted); }
+    .badge-big svg { width: 30px; height: 30px; }
+    .finish.complete .badge-big { background: var(--brand-grad); color: #fff; box-shadow: 0 14px 30px -12px rgba(27, 175, 122, .7); animation: pop .6s var(--ease); }
+    @keyframes pop { 0% { transform: scale(.6); } 60% { transform: scale(1.08); } 100% { transform: none; } }
+    .finish h2 { font-size: 26px; }
+    .finish .sub { max-width: 560px; margin: 8px auto 0; font-size: 14px; }
+    .finish .actions { justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+    .next-steps { list-style: none; counter-reset: s; padding: 0; margin: 24px auto 0; max-width: 760px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; text-align: left; }
+    .next-steps li { counter-increment: s; background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px; font-size: 13px; color: var(--ink-2); }
+    .next-steps li::before { content: counter(s); display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: var(--brand-grad); color: #fff; font-weight: 650; font-size: 12px; margin-bottom: 7px; }
+    textarea.csv { width: 100%; height: 180px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 16px; background: var(--surface-2); color: var(--ink);
+      border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: left; }
+
+    .toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 50;
+      background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 13.5px; font-weight: 500; box-shadow: var(--shadow-lg);
+      transition: opacity .25s, transform .25s var(--ease); }
+    .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 860px) {
+      .guide-grid { grid-template-columns: 1fr; }
+      .next-steps { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .progress-bar { flex-direction: row !important; flex-wrap: wrap; }
+      .dots { display: none; }
+      .prog { flex: 1 1 0; }
+      .progress-bar { flex-wrap: nowrap !important; }
+      #jump { background: var(--surface-3); padding: 9px 11px; }
+      .actions .label-long { display: none; }
+      .field { grid-template-columns: 1fr; gap: 6px; }
+      .field-label { padding-top: 0; }
+      .theme-def { grid-column: 1; }
+      .theme-cards { grid-template-columns: 1fr; }
+      .q { padding: 16px; }
+      .quote { padding-left: 24px; font-size: 15px; }
+      .more { padding-left: 24px; }
+    }
   </style>
 </head>
 <body>
 <div class="backdrop" aria-hidden="true"></div>
-<div class="page">
-  <header class="top">
-    <div>
-      <h1 style="font-size:clamp(30px,4.5vw,44px);letter-spacing:-0.03em">Hand-label <em class="accent">30 reviews</em></h1>
-      <p class="lede">Tag each review the way you would if no tracker existed. The tracker's own tags are deliberately
-        hidden so they can't influence you. Your answers are kept in this browser until you download them.</p>
-    </div>
-    <a class="btn-ghost" href="./">← Back to the tracker</a>
-  </header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a78d6"/><stop offset="1" stop-color="#1baf7a"/></linearGradient></defs>
+</svg>
 
-  <section class="panel">
-    <details class="defs" open><summary>Definitions (the same ones the tracker uses)</summary>
-      <dl id="defs"></dl>
-      <p class="sub" id="rules"></p>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="./" aria-label="Checkout reviews tracker, home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path d="M8 20l5-6 4 4 7-8" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="brand-name">Checkout&nbsp;Reviews<span class="brand-sub">Tracker</span></span>
+    </a>
+    <a class="btn-ghost" href="./"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Back to the tracker</span></a>
+  </div>
+</header>
+
+<main class="page">
+  <section class="hero" aria-labelledby="hero-h">
+    <p class="eyebrow-chip"><span class="live-dot" aria-hidden="true"></span>Blind check · the tracker's own tags are hidden</p>
+    <h1 id="hero-h">Hand-label <em class="accent">30 reviews</em></h1>
+    <p class="lede">Tag each review the way you would if no tracker existed. Your labels become the answer key: every run scores the
+      tracker's sentiment and theme tags against them and publishes the agreement on the main page.</p>
+    <div class="facts">
+      <span class="fact"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M8 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>About 20 minutes</span>
+      <span class="fact"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>One sentiment and one theme each</span>
+      <span class="fact"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>Saved in this browser as you go</span>
+    </div>
+  </section>
+
+  <div class="toolbar progress-bar" role="region" aria-label="Progress">
+    <div class="prog">
+      <svg class="ring" viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="16"/><circle class="fill" id="ring" cx="20" cy="20" r="16" stroke-dasharray="100.53" stroke-dashoffset="100.53"/></svg>
+      <div class="prog-text"><strong id="progress">0 of 30</strong><span id="progress-sub">labelled</span></div>
+      <div class="dots" id="dots" aria-label="Jump to a review"></div>
+    </div>
+    <div class="actions">
+      <button class="btn quiet" type="button" id="jump"><span class="label-long">Next unlabelled</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="btn primary" type="button" id="download" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span><span class="label-long">Download </span>CSV</span></button>
+    </div>
+  </div>
+
+  <section class="panel guide" aria-labelledby="guide-h">
+    <details open id="guide">
+      <summary><span id="guide-h">Labelling guide · the same definitions the tracker uses</span></summary>
+      <div class="guide-grid" style="margin-top:14px">
+        <div>
+          <h3>Sentiment</h3>
+          <div class="sent-cards" id="sent-cards"></div>
+        </div>
+        <div>
+          <h3>Themes</h3>
+          <div class="theme-cards" id="theme-cards"></div>
+        </div>
+      </div>
+      <div class="rules" id="rules"></div>
     </details>
   </section>
 
-  <section class="panel">
-    <div id="questions"></div>
-    <div class="bar">
-      <span id="progress" class="sub">0 of 30 labelled</span>
-      <span>
-        <button class="btn secondary" type="button" id="reset">Clear all</button>
-        <button class="btn secondary" type="button" id="show">Show CSV</button>
-        <button class="btn" type="button" id="download" disabled>Download hand_labels.csv</button>
-      </span>
+  <div class="qs" id="questions"><div class="panel">Loading the 30 reviews…</div></div>
+
+  <section class="panel finish" id="finish" aria-live="polite">
+    <div class="badge-big" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <h2 id="finish-h">Keep going</h2>
+    <p class="sub" id="finish-sub"></p>
+    <div class="actions">
+      <button class="btn primary" type="button" id="download2" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Download hand_labels.csv</button>
+      <button class="btn" type="button" id="show">Show CSV</button>
+      <button class="btn quiet" type="button" id="reset">Clear all labels</button>
     </div>
     <textarea class="csv" id="csv" readonly hidden aria-label="CSV of your labels"></textarea>
-    <p class="sub">Next: commit the file as <code>eval/hand_labels.csv</code> (GitHub: Add file → Upload files → into the <code>eval</code> folder). The next run scores the tracker against it and publishes the result on the main page.</p>
+    <ol class="next-steps">
+      <li>Download <code>hand_labels.csv</code> once all 30 are done.</li>
+      <li>On GitHub: open the <code>eval</code> folder, then Add file → Upload files.</li>
+      <li>Commit it. The run that starts scores the tracker and updates the main page.</li>
+    </ol>
   </section>
-</div>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script>
 (function () {
   "use strict";
@@ -69,50 +235,135 @@
   const SENTS = { positive: "Positive", neutral: "Neutral", negative: "Negative" };
   const KEY = "crt-hand-labels-v1";
   const APPS = { "kwikcheckout": "Kwik COD & Checkout", "razorpay-checkout": "Razorpay Magic Checkout", "simpl-checkout": "Simpl" };
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const sentColor = (k) => css(`--sent-${k}`);
   let sample = [], labels = {};
 
   try { labels = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { labels = {}; }
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(labels)); } catch (e) { /* blocked */ } };
 
+  // Review text is untrusted: it only ever goes in through text nodes.
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) {
       if (v === null || v === undefined || v === false) continue;
-      if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v === true ? "" : v);
+      if (k === "class") n.className = v;
+      else if (k === "style") n.setAttribute("style", v);
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
     }
-    kids.flat().forEach((c) => c !== null && c !== undefined && n.append(c instanceof Node ? c : document.createTextNode(String(c))));
+    kids.flat().forEach((c) => c !== null && c !== undefined && c !== false && n.append(c instanceof Node ? c : document.createTextNode(String(c))));
     return n;
   }
-  document.getElementById("rules").textContent =
-    "Sentiment: positive = satisfied overall; neutral = mixed (praise and complaint of similar weight) or no judgement; negative = dissatisfied overall. The text decides, stars only break ties. Theme: the ONE topic that caused the rating or takes most of the text.";
+  const svgNS = "http://www.w3.org/2000/svg";
+  function check() {
+    const s = document.createElementNS(svgNS, "svg");
+    s.setAttribute("viewBox", "0 0 16 16");
+    s.setAttribute("aria-hidden", "true");
+    s.innerHTML = '<path d="M3.5 8.5l3 3 6-6.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
+    return s;
+  }
+  const fmtDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const isDone = (id) => !!(labels[id] && labels[id].sentiment && labels[id].theme);
+  const done = () => sample.filter((r) => isDone(r.id)).length;
+  let toastTimer = null;
+  function toast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("on"), 2200);
+  }
 
-  function options(name, map, current, onpick) {
-    return el("div", { class: "opts", role: "radiogroup" }, Object.entries(map).map(([k, v]) => {
+  // ---- the guide, built from the tracker's own rule text --------------------------
+  function renderGuide(rules) {
+    const flat = (rules.sentiment || "").replace(/\s+/g, " ").trim();
+    const parts = flat.split(/\b(positive|neutral|negative)\s+-\s+/);
+    const defs = {};
+    let tail = "";
+    for (let i = 1; i < parts.length; i += 2) defs[parts[i]] = parts[i + 1].trim();
+    if (defs.negative) {
+      const m = /^(.*?\.)\s+(.*)$/.exec(defs.negative);
+      if (m) { defs.negative = m[1]; tail = m[2]; }
+    }
+    document.getElementById("sent-cards").replaceChildren(...Object.keys(SENTS).map((k) =>
+      el("div", { class: "sent-card", style: `--s:${sentColor(k)}` }, el("i"), el("b", null, SENTS[k]), el("span", null, defs[k] || ""))));
+    document.getElementById("theme-cards").replaceChildren(...Object.values(THEMES).map(([l, d]) =>
+      el("div", { class: "theme-card" }, el("b", null, l), el("span", null, d))));
+    const themeText = (rules.theme || "").replace(/\n(?!- )\s*/g, " ").split("\n- ");
+    document.getElementById("rules").replaceChildren(
+      el("p", null, el("strong", null, "Tie-breakers. "), tail, " ", themeText[0]),
+      themeText.length > 1 ? el("ul", null, themeText.slice(1).map((t) => el("li", null, t.trim()))) : null);
+  }
+
+  // ---- one card per review ----------------------------------------------------------
+  function options(kind, name, map, current, onpick) {
+    return el("div", { class: `opts ${kind}`, role: "radiogroup" }, Object.entries(map).map(([k, v]) => {
+      const label = Array.isArray(v) ? v[0] : v;
       const input = el("input", { type: "radio", name, value: k, checked: current === k, onchange: () => onpick(k) });
-      return el("label", { title: Array.isArray(v) ? v[1] : null }, input, el("span", null, Array.isArray(v) ? v[0] : v));
+      return el("label", { class: "opt", title: Array.isArray(v) ? v[1] : null, style: kind === "sent" ? `--s:${sentColor(k)}` : null },
+        input, kind === "sent" ? el("i") : null, el("span", null, label));
     }));
   }
   function render() {
     const box = document.getElementById("questions");
     box.replaceChildren(...sample.map((r, i) => {
       const lab = labels[r.id] || {};
-      const q = el("div", { class: "q" + (lab.sentiment && lab.theme ? " done" : ""), id: "q-" + r.id });
-      const update = (k, v) => { labels[r.id] = Object.assign({}, labels[r.id], { [k]: v }); persist(); q.classList.toggle("done", !!(labels[r.id].sentiment && labels[r.id].theme)); progress(); };
+      const c = css(`--app-${r.app}`) || css("--ink");
+      const num = el("span", { class: "num" }, isDone(r.id) ? check() : String(i + 1));
+      const q = el("article", { class: "q" + (isDone(r.id) ? " done" : ""), id: "q-" + r.id, style: `--c:${c}`, "aria-label": `Review ${i + 1} of ${sample.length}` });
+      const HINT = "Pick the one topic the review is mainly about; its definition then shows here.";
+      const themeDef = el("p", { class: "theme-def" + (lab.theme ? "" : " hint") }, lab.theme && THEMES[lab.theme] ? THEMES[lab.theme][1] : HINT);
+      const update = (k, v) => {
+        const was = isDone(r.id);
+        labels[r.id] = Object.assign({}, labels[r.id], { [k]: v });
+        persist();
+        const now = isDone(r.id);
+        q.classList.toggle("done", now);
+        num.replaceChildren(now ? check() : String(i + 1));
+        if (k === "theme") { themeDef.textContent = THEMES[v] ? THEMES[v][1] : ""; themeDef.classList.remove("hint"); }
+        progress();
+        if (now && !was) setTimeout(() => goNext(r.id), 350);   // move on once a card is complete
+      };
+      const text = el("p", { class: "quote" }, r.text);
       q.append(
-        el("div", { class: "review-meta" }, el("span", { class: "num" }, i + 1),
+        el("div", { class: "q-top" }, num,
+          el("span", { class: "app-badge" }, el("span", { class: "dot", style: `background:${c}` }), APPS[r.app] || r.app),
           el("span", { class: "stars", "aria-label": `${r.rating} out of 5 stars` }, "★".repeat(r.rating), el("span", { class: "off" }, "★".repeat(5 - r.rating))),
-          el("span", null, APPS[r.app] || r.app), el("span", null, r.date),
+          el("span", null, fmtDate(r.date)),
+          el("span", { class: "spacer" }),
           el("a", { href: r.url, target: "_blank", rel: "noopener" }, "View on Shopify ↗")),
-        el("p", { class: "review-text" }, r.text),
-        el("div", { class: "line" }, el("span", { class: "row-label" }, "Sentiment"), options("s-" + r.id, SENTS, lab.sentiment, (v) => update("sentiment", v))),
-        el("div", { class: "line" }, el("span", { class: "row-label" }, "Theme"), options("t-" + r.id, THEMES, lab.theme, (v) => update("theme", v))),
-        el("div", { class: "line" }, el("span", { class: "row-label" }, "Note"),
-          el("input", { class: "note", type: "text", placeholder: "optional: why, if it was a close call", value: lab.note || "", oninput: (e) => update("note", e.target.value) })));
+        text);
+      if (r.text.length > 700) {
+        text.classList.add("clamp");
+        const more = el("button", { class: "more", type: "button", onclick: () => { text.classList.toggle("clamp"); more.textContent = text.classList.contains("clamp") ? "Read the full review" : "Show less"; } }, "Read the full review");
+        q.append(more);
+      }
+      q.append(el("div", { class: "answers" },
+        el("div", { class: "field" }, el("span", { class: "field-label" }, "Sentiment"), options("sent", "s-" + r.id, SENTS, lab.sentiment, (v) => update("sentiment", v))),
+        el("div", { class: "field" }, el("span", { class: "field-label" }, "Main theme"), options("theme", "t-" + r.id, THEMES, lab.theme, (v) => update("theme", v)), themeDef),
+        el("div", { class: "field" }, el("span", { class: "field-label" }, "Note"),
+          el("input", { class: "note", type: "text", placeholder: "Optional: why, if it was a close call", value: lab.note || "", "aria-label": `Note for review ${i + 1}`, oninput: (e) => { labels[r.id] = Object.assign({}, labels[r.id], { note: e.target.value }); persist(); } }))));
       return q;
     }));
+    document.getElementById("dots").replaceChildren(...sample.map((r, i) =>
+      el("button", { type: "button", title: `Review ${i + 1}`, "aria-label": `Go to review ${i + 1}`, "data-id": r.id, onclick: () => scrollToCard(r.id) })));
     progress();
   }
-  function done() { return sample.filter((r) => labels[r.id] && labels[r.id].sentiment && labels[r.id].theme).length; }
+  function scrollToCard(id) {
+    const n = document.getElementById("q-" + id);
+    if (n) n.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }
+  function goNext(fromId) {
+    const start = sample.findIndex((r) => r.id === fromId);
+    const order = sample.slice(start + 1).concat(sample.slice(0, start + 1));
+    const next = order.find((r) => !isDone(r.id));
+    if (next) scrollToCard(next.id);
+    else { document.getElementById("finish").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" }); }
+  }
+
+  // ---- progress, CSV, finish ----------------------------------------------------------
   function csv() {
     const esc = (s) => `"${String(s || "").replace(/"/g, '""')}"`;
     return ["id,human_sentiment,human_theme,note"].concat(sample.map((r) => {
@@ -121,28 +372,58 @@
     })).join("\n") + "\n";
   }
   function progress() {
-    const n = done();
-    document.getElementById("progress").textContent = `${n} of ${sample.length} labelled`;
-    document.getElementById("download").disabled = n < sample.length;
+    const n = done(), total = sample.length || 30;
+    document.getElementById("progress").textContent = `${n} of ${total}`;
+    document.getElementById("progress-sub").textContent = n === total ? "all labelled" : `labelled · ${total - n} to go`;
+    document.getElementById("ring").setAttribute("stroke-dashoffset", String(100.53 * (1 - n / total)));
+    document.querySelectorAll("#dots button").forEach((b) => {
+      const l = labels[b.dataset.id] || {};
+      b.classList.toggle("done", isDone(b.dataset.id));
+      b.classList.toggle("part", !isDone(b.dataset.id) && !!(l.sentiment || l.theme));
+    });
+    const complete = n === total && total > 0;
+    ["download", "download2"].forEach((id) => { document.getElementById(id).disabled = !complete; });
+    document.getElementById("jump").disabled = complete;
+    const fin = document.getElementById("finish");
+    fin.classList.toggle("complete", complete);
+    document.getElementById("finish-h").textContent = complete ? "All 30 labelled. Nice work." : `${total - n} review${total - n === 1 ? "" : "s"} to go`;
+    document.getElementById("finish-sub").textContent = complete
+      ? "Download the CSV and commit it to the repository's eval folder. The tracker is then scored against your labels on every run."
+      : "The download unlocks once every review has a sentiment and a theme. Your answers are already saved in this browser.";
     const ta = document.getElementById("csv");
     if (!ta.hidden) ta.value = csv();
   }
-  document.getElementById("download").addEventListener("click", () => {
+  function download() {
     const url = URL.createObjectURL(new Blob([csv()], { type: "text/csv" }));
     const a = el("a", { href: url, download: "hand_labels.csv" });
     document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("hand_labels.csv downloaded");
+  }
+  document.getElementById("download").addEventListener("click", download);
+  document.getElementById("download2").addEventListener("click", download);
+  document.getElementById("jump").addEventListener("click", () => {
+    const next = sample.find((r) => !isDone(r.id));
+    if (next) scrollToCard(next.id);
   });
-  document.getElementById("show").addEventListener("click", () => { const ta = document.getElementById("csv"); ta.hidden = !ta.hidden; ta.value = csv(); });
-  document.getElementById("reset").addEventListener("click", () => { if (confirm("Clear all 30 labels?")) { labels = {}; persist(); render(); } });
+  document.getElementById("show").addEventListener("click", (e) => {
+    const ta = document.getElementById("csv");
+    ta.hidden = !ta.hidden; ta.value = csv();
+    e.currentTarget.textContent = ta.hidden ? "Show CSV" : "Hide CSV";
+  });
+  document.getElementById("reset").addEventListener("click", () => {
+    if (confirm("Clear all 30 labels? This can't be undone.")) { labels = {}; persist(); render(); toast("All labels cleared"); }
+  });
 
-  Promise.all(["label-sample.json", "data.json"].map((u) => fetch(u, { cache: "no-cache" }).then((r) => r.json())))
+  Promise.all(["label-sample.json", "data.json"].map((u) => fetch(u, { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`); return r.json(); })))
     .then(([s, data]) => {
       sample = s;
       THEMES = Object.fromEntries(Object.entries(data.themes).map(([k, t]) => [k, [t.label, t.definition]]));
-      document.getElementById("defs").replaceChildren(...Object.values(THEMES).flatMap(([l, d]) => [el("dt", null, l), el("dd", null, d)]));
+      renderGuide(data.tag_rules || {});
+      // the guide is long on a phone: start it folded there
+      if (window.matchMedia && window.matchMedia("(max-width: 720px)").matches) document.getElementById("guide").open = false;
       render();
     })
-    .catch((e) => { document.getElementById("questions").textContent = "Could not load the sample: " + e.message; });
+    .catch((e) => { document.getElementById("questions").replaceChildren(el("div", { class: "panel" }, "Could not load the sample: " + e.message)); });
 })();
 </script>
 </body>

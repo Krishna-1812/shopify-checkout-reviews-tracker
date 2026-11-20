@@ -14,7 +14,7 @@ import shutil
 from datetime import date, datetime, timedelta, timezone
 
 from . import config, store
-from .tagging.taxonomy import SENTIMENTS, THEME_KEYS, THEMES
+from .tagging.taxonomy import SENTIMENT_RULES, SENTIMENTS, THEME_KEYS, THEME_RULES, THEMES
 
 LATEST_N = 20
 
@@ -148,6 +148,7 @@ def build_data(reviews_by_id: dict[str, dict], runs: list[dict], today: date | N
         **build_series(reviews, today),
         "latest": latest_reviews(reviews),
         "themes": {k: {"label": lbl, "definition": d} for k, (lbl, d) in THEMES.items()},
+        "tag_rules": {"sentiment": SENTIMENT_RULES, "theme": THEME_RULES},   # shown on label.html
         "tagging": tagging_mix(reviews),
         "runs": run_summary(runs),
         "evaluation": json.loads(eval_report.read_text()) if eval_report.exists() else None,

@@ -34,7 +34,7 @@ runs when code under `tracker/`, `site/` or `eval/` changes on `main`, and on de
 |---|---|---|
 | `track` | every run | Runs the unit tests, then `python -m tracker.run`: scrape, merge, tag, health check, build `_site/`. Then scores the tagging against the hand labels (if present), commits `data/` and `eval/` back to `main`, and uploads the page. Fails at the end if the health check said `alert`. |
 | `deploy` | after `track` has built the page, **even if `track` then failed** | Publishes `_site/` to GitHub Pages, so the page shows the problem too. |
-| `alert` | only if `track` or `deploy` failed | Opens a GitHub issue labelled `tracker-alert`, or comments on the one already open (no duplicates). Posts to Discord too if `DISCORD_WEBHOOK_URL` is set. |
+| `alert` | only if `track` or `deploy` failed, **timed out or was cancelled** | Opens a GitHub issue labelled `tracker-alert`, or comments on the one already open (no duplicates). Posts to Discord too if `DISCORD_WEBHOOK_URL` is set. |
 | `recover` | only if everything passed | Closes any open `tracker-alert` issue with a link to the healthy run. |
 
 A normal day reads one page per app (10 newest reviews). The crawler stops at the first page whose
@@ -119,6 +119,15 @@ AI prompt, the labelling page and the evaluation.
     showed that GitHub retired that service on 30 July 2026: the endpoint answers `200 OK` in plain
     text. The run stayed healthy (rules covered every review, the page showed a warning, no false
     alert). The client now treats any non-API reply as "provider unavailable" after one call.
+- **Built for flaky free tiers.** Live runs hit read timeouts, `503 high demand` and `429`s on
+  Gemini's free tier, so the client:
+  - **rotates** to the next listed Flash or Flash-Lite model on a busy, rate-limited, slow or retired
+    model (free quotas are per model), instead of sleeping;
+  - **stops calling the AI** after 2 failed batches in a row (circuit breaker);
+  - **caps AI work at 8 minutes per run**, enforced inside every wait and request.
+
+  A struggling provider can never push the job into its timeout. Unfinished reviews keep rules tags
+  and are upgraded on later runs.
 - **Rules fallback:** if the AI is unavailable (quota, outage, no token), the keyword and star-rating
   tagger covers the gap. Those reviews are upgraded to AI tags on a later run. A tagging problem
   never fails a run; it shows as a warning on the page.
@@ -147,7 +156,7 @@ number:
 | A review block is missing its id, date or stars | **alert**: the markup drifted |
 | After a full crawl we hold < 95% of what Shopify lists | **alert**: reviews are being missed |
 | A page can't be fetched after retries (403/429/5xx/timeout) | **alert** |
-| Tests fail, the run crashes, the data push or the Pages deploy fails | **alert** (the job fails) |
+| Tests fail, the run crashes or hangs past its timeout, the data push or the Pages deploy fails | **alert** (the job fails or is cancelled) |
 | No new reviews today; Simpl lists 0 and we parsed 0 | silent: healthy |
 | AI tagger unavailable, rules used | silent: warning on the page only |
 

@@ -183,7 +183,8 @@ def test_rank_models_prefers_newest_listed_flash():
     listed = {"gemini-2.5-flash", "gemini-3.8-flash", "gemini-3.10-flash", "gemini-3.8-flash-lite",
               "gemini-4-pro", "text-embedding-005"}
     ranked = llm.rank_models(listed, ["gemini-2.5-flash", "gemini-2.0-flash"], llm.PROVIDERS[0].auto_pattern)
-    assert ranked[:3] == ["gemini-3.10-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
+    assert ranked[:4] == ["gemini-3.10-flash", "gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-2.5-flash"]
+    assert "gemini-4-pro" not in ranked and "text-embedding-005" not in ranked
     assert ranked[-1] == "gemini-2.0-flash"          # unlisted preference kept as last resort
     assert llm.rank_models(set(), ["a", "b"]) == ["a", "b"]
 
@@ -215,3 +216,55 @@ def test_ai_time_budget_stops_cleanly(monkeypatch):
     s = tagging.tag_all(store, t)
     assert t.calls == 0 and s.rules_tagged == 3 and s.pending_upgrade == 3
     assert s.llm_status.startswith("ok (time budget")
+
+
+def _ok_reply(rid="1"):
+    return ('{"choices": [{"message": {"content": "{\\"results\\": [{\\"id\\": \\"%s\\", '
+            '\\"sentiment\\": \\"negative\\", \\"theme\\": \\"support\\"}]}"}}]}' % rid)
+
+
+@pytest.mark.parametrize("status", [429, 503, 500])
+def test_busy_or_rate_limited_model_rotates_without_sleeping(monkeypatch, status):
+    """Gemini's free tier answered 503 'high demand' and 429s; free quotas are per model."""
+    t = llm.LLMTagger(provider=llm.Provider("x", "https://x", "X_KEY", "a", 0), key="k")
+    t.model, t.candidates = "a", ["a", "b"]
+    monkeypatch.setattr(llm.time, "sleep", lambda s: (_ for _ in ()).throw(AssertionError("slept")))
+    tried = []
+
+    def post(url, json, timeout):
+        tried.append(json["model"])
+        return FakeResp(status, "busy") if json["model"] == "a" else FakeResp(200, _ok_reply())
+    monkeypatch.setattr(t.session, "post", post)
+    assert t.tag_batch([rv("1", "x")], {})["1"]["theme"] == "support"
+    assert tried == ["a", "b"]
+
+
+def test_timeout_rotates_and_all_models_failing_is_unavailable(monkeypatch):
+    import requests as rq
+    t = llm.LLMTagger(provider=llm.Provider("x", "https://x", "X_KEY", "a", 0), key="k")
+    t.model, t.candidates = "a", ["a", "b"]
+
+    def post(url, json, timeout):
+        raise rq.ReadTimeout("read timed out")
+    monkeypatch.setattr(t.session, "post", post)
+    with pytest.raises(llm.LLMUnavailable):
+        t.tag_batch([rv("1", "x")], {})
+    assert t.model == "b"
+
+
+def test_deadline_stops_the_client(monkeypatch):
+    t = llm.LLMTagger(provider=llm.Provider("x", "https://x", "X_KEY", "a", 0), key="k")
+    t.model, t.candidates = "a", ["a"]
+    t.deadline = llm.time.monotonic() + 5          # less than the 15 s a call needs
+    monkeypatch.setattr(t.session, "post", lambda *a, **kw: FakeResp(200, _ok_reply()))
+    with pytest.raises(llm.LLMUnavailable, match="time budget"):
+        t.tag_batch([rv("1", "x")], {})
+
+
+def test_circuit_breaker_after_two_failed_batches(monkeypatch):
+    monkeypatch.setenv("TAGGER", "auto")
+    store = {str(i): rv(str(i), "support slow", 1, date=f"2026-11-{10 + i}") for i in range(35)}
+    t = FakeTagger(fail=ValueError("bad json"))
+    s = tagging.tag_all(store, t)
+    assert t.calls == 2                                  # stopped after 2 failures, not 4 batches
+    assert s.llm_status.startswith("unavailable: gave up") and s.rules_tagged == 35

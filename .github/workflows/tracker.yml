@@ -3,7 +3,7 @@
 #   track   -> tests, scrape, tag, health check, commit data/, build the page
 #   deploy  -> publish _site/ to GitHub Pages (also on unhealthy runs, so the
 #              page shows the problem)
-#   alert   -> only if something failed: open (or comment on) a GitHub issue
+#   alert   -> only if something failed, timed out or was cancelled: open (or comment on) a GitHub issue
 #   recover -> only if everything passed: close any open alert issue
 #
 # To prove the alert works: Actions > Daily reviews tracker > Run workflow >
@@ -146,7 +146,9 @@ jobs:
 
   alert:
     needs: [track, deploy]
-    if: ${{ failure() }}
+    # failure() alone misses a job that hit its timeout: GitHub reports that as
+    # "cancelled". A hung run is exactly the silent failure we must catch.
+    if: ${{ always() && (needs.track.result == 'failure' || needs.track.result == 'cancelled' || needs.deploy.result == 'failure') }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -172,7 +174,7 @@ jobs:
             if [ -f alert.md ]; then
               cat alert.md
             else
-              echo "The run **failed before it could finish** (crash, test failure, push or deploy error)."
+              echo "The run **did not finish**: it crashed, timed out, was cancelled, or a test, push or deploy step failed."
               echo
               echo "Job results: track = \`$TRACK\`, deploy = \`$DEPLOY\`."
             fi

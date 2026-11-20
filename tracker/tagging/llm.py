@@ -34,8 +34,9 @@ from .taxonomy import SENTIMENT_RULES, SENTIMENTS, THEME_KEYS, THEME_RULES, THEM
 log = logging.getLogger(__name__)
 
 PROMPT_VERSION = "llm-v1"     # bump to re-tag everything after a prompt change
-BATCH_SIZE = 15
+BATCH_SIZE = 10
 MAX_TEXT_CHARS = 1500
+REQUEST_TIMEOUT = 60          # seconds; a free model slower than this is treated as busy
 
 
 @dataclass(frozen=True)
@@ -46,16 +47,19 @@ class Provider:
     models: str                # comma-separated fallback preference list
     min_gap_seconds: float     # spacing between calls to stay under the free RPM
     auto_pattern: str = ""     # regex: prefer the newest listed model matching this
+    reasoning_hint: bool = False  # send reasoning_effort="low" (faster on "thinking" models)
 
 
 class ModelGone(RuntimeError):
-    """This model is refused (retired, not offered to new users); try the next one."""
+    """This model can't serve us right now (retired, refused, busy, rate limited,
+    too slow); try the next candidate. Free quotas are per model, so rotating
+    usually works where waiting would not."""
 
 
 PROVIDERS: tuple[Provider, ...] = (
     Provider("gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY",
              "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash", 7.0,
-             auto_pattern=r"^gemini-(\d+(?:\.\d+)?)-flash$"),
+             auto_pattern=r"^gemini-(\d+(?:\.\d+)?)-flash(-lite)?$", reasoning_hint=True),
     Provider("groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY",
              "llama-3.3-70b-versatile,openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3-32b", 2.5),
 )
@@ -123,8 +127,9 @@ def rank_models(listed: set[str], preferred: list[str], auto_pattern: str = "") 
     if auto_pattern and listed:
         rx = re.compile(auto_pattern)
         hits = [(m, rx.match(m)) for m in listed]
-        def version(match):  # "3.8" -> (3, 8)
-            return tuple(int(x) for x in match.group(1).split("."))
+        def version(match):  # "3.8" -> (3, 8, 1); a "-lite" sorts just after its full model
+            lite = 0 if (match.lastindex or 0) >= 2 and match.group(2) else 1
+            return (*(int(x) for x in match.group(1).split(".")), lite)
         auto = [m for m, mt in sorted(((m, mt) for m, mt in hits if mt), key=lambda x: version(x[1]), reverse=True)]
     ranked = auto + [m for m in preferred if m in listed] + [m for m in preferred if m not in listed]
     return list(dict.fromkeys(ranked))   # de-duplicate, keep order
@@ -141,7 +146,9 @@ class LLMTagger:
         self.model: str | None = None
         self.candidates: list[str] = []
         self.calls = 0
+        self.deadline: float | None = None   # time.monotonic() value set by tag_all
         self.use_json_mode = True
+        self.use_reasoning_hint = bool(provider and provider.reasoning_hint)
         self._last_call = 0.0
         self.session = requests.Session()
         if key:
@@ -190,21 +197,33 @@ class LLMTagger:
         self.model = self.candidates[i + 1]
         return self.model
 
+    def _remaining(self) -> float:
+        return float("inf") if self.deadline is None else self.deadline - time.monotonic()
+
+    def _sleep(self, seconds: float) -> None:
+        if seconds >= self._remaining():
+            raise LLMUnavailable("time budget reached while waiting on the provider")
+        time.sleep(seconds)
+
     def _post(self, payload: dict) -> dict:
+        """One chat call. Busy/rate-limited/slow models raise ModelGone so the
+        caller rotates to the next model (free quotas are per model) instead
+        of sleeping on a provider that is struggling."""
         url = f"{self.provider.base_url}/chat/completions"
-        for attempt in range(1, 4):
+        for _ in range(3):   # only "fix the request and resend" cases loop here
             gap = time.monotonic() - self._last_call
             if gap < self.provider.min_gap_seconds:
-                time.sleep(self.provider.min_gap_seconds - gap)
+                self._sleep(self.provider.min_gap_seconds - gap)
+            if self._remaining() < 15:
+                raise LLMUnavailable("time budget reached")
             self._last_call = time.monotonic()
             try:
-                resp = self.session.post(url, json=payload, timeout=90)
+                resp = self.session.post(url, json=payload, timeout=min(REQUEST_TIMEOUT, self._remaining()))
             except requests.RequestException as exc:
-                log.warning("%s network error: %s (attempt %d)", self.provider.name, exc, attempt)
-                time.sleep(5 * attempt)
-                continue
+                raise ModelGone(f"network/timeout: {exc}")
             self.calls += 1
             body = resp.text[:300]
+            low = body.lower()
             if resp.status_code == 200:
                 try:
                     data = resp.json()
@@ -215,23 +234,17 @@ class LLMTagger:
                     raise LLMUnavailable(f"{self.provider.name} returned a non-API reply: {body!r}")
             if resp.status_code in (401, 403):
                 raise LLMUnavailable(f"{self.provider.name} HTTP {resp.status_code}: {body}")
-            if resp.status_code in (404, 410) or (resp.status_code == 400 and "model" in body.lower()
-                                                   and ("not found" in body.lower() or "no longer" in body.lower())):
-                raise ModelGone(f"HTTP {resp.status_code}: {body}")
-            if resp.status_code == 429:
-                wait = float(resp.headers.get("retry-after") or 30 * attempt)
-                if wait > 120 or "per day" in body.lower() or "daily" in body.lower():
-                    raise LLMUnavailable(f"{self.provider.name} quota used up: {body}")
-                log.warning("rate limited, sleeping %.0fs", wait)
-                time.sleep(wait)
-                continue
-            if resp.status_code == 400 and "response_format" in body and payload.get("response_format"):
-                payload = {k: v for k, v in payload.items() if k != "response_format"}
+            if resp.status_code == 400 and payload.get("response_format") and "response_format" in low:
+                payload.pop("response_format")
                 self.use_json_mode = False
                 continue
-            log.warning("%s HTTP %s: %s (attempt %d)", self.provider.name, resp.status_code, body, attempt)
-            time.sleep(5 * attempt)
-        raise RuntimeError(f"{self.provider.name} failed 3 times for this batch")
+            if resp.status_code == 400 and payload.get("reasoning_effort") and "reasoning" in low:
+                payload.pop("reasoning_effort")
+                self.use_reasoning_hint = False
+                continue
+            # retired / refused / busy / rate limited / server error: try the next model
+            raise ModelGone(f"HTTP {resp.status_code}: {body}")
+        raise ModelGone("request rejected repeatedly")
 
     def tag_batch(self, batch: list[dict], app_names: dict[str, str]) -> dict[str, dict]:
         """Return {review_id: tags} for the reviews the model labelled validly."""
@@ -246,6 +259,8 @@ class LLMTagger:
         }
         if self.use_json_mode:
             payload["response_format"] = {"type": "json_object"}
+        if self.use_reasoning_hint:
+            payload["reasoning_effort"] = "low"
         while True:
             try:
                 data = self._post(payload)

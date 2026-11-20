@@ -30,6 +30,7 @@ MAX_LLM_REVIEWS_PER_RUN = 600   # covers a full backfill; normal days send a han
 # backfill can never push the job into its timeout (which would be a false
 # alert); whatever is left gets rules tags now and is upgraded on later runs.
 AI_TIME_BUDGET_SECONDS = float(os.environ.get("AI_TIME_BUDGET_SECONDS", 480))
+MAX_FAILED_BATCHES_IN_A_ROW = 2  # circuit breaker: stop calling a provider that keeps failing
 
 
 @dataclass
@@ -87,7 +88,14 @@ def tag_all(store: dict[str, dict], tagger: llm.LLMTagger | None = None) -> TagS
         stats.llm_status = "ok"
         todo = queue[:MAX_LLM_REVIEWS_PER_RUN]
         deadline = time.monotonic() + AI_TIME_BUDGET_SECONDS
+        if hasattr(tagger, "deadline"):
+            tagger.deadline = deadline          # bounds every wait/request inside the client too
+        failures_in_a_row = 0
         for i in range(0, len(todo), llm.BATCH_SIZE):
+            if failures_in_a_row >= MAX_FAILED_BATCHES_IN_A_ROW:   # circuit breaker
+                stats.llm_status = f"unavailable: gave up after {failures_in_a_row} failed batches in a row"
+                log.warning("AI tagger: %s", stats.llm_status)
+                break
             if time.monotonic() > deadline:
                 stats.llm_status = "ok (time budget reached; the rest continue next run)"
                 log.info("AI time budget reached after %d reviews", stats.llm_tagged)
@@ -96,13 +104,18 @@ def tag_all(store: dict[str, dict], tagger: llm.LLMTagger | None = None) -> TagS
             try:
                 tags = tagger.tag_batch(batch, app_names)
             except llm.LLMUnavailable as exc:
-                stats.llm_status = f"unavailable: {exc}"[:300]
-                log.warning("AI tagger unavailable, falling back to rules: %s", exc)
+                if "time budget" in str(exc) and stats.llm_tagged:
+                    stats.llm_status = "ok (time budget reached; the rest continue next run)"
+                else:
+                    stats.llm_status = f"unavailable: {exc}"[:300]
+                log.warning("AI tagger stopped, rules cover the rest: %s", exc)
                 break
-            except Exception as exc:  # bad JSON, repeated 5xx: skip this batch only
+            except Exception as exc:  # bad JSON etc.: skip this batch only
+                failures_in_a_row += 1
                 log.warning("AI batch failed (%s); rules will cover it", exc)
                 stats.llm_status = f"partial: {type(exc).__name__}"
                 continue
+            failures_in_a_row = 0 if tags else failures_in_a_row + 1
             for r in batch:
                 if r["id"] in tags:
                     r.update(tags[r["id"]], tag_version=llm.PROMPT_VERSION)

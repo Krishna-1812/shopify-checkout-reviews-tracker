@@ -308,11 +308,11 @@
   "first_seen": "2026-11-20",
   "last_seen": "2026-11-20",
   "sentiment": "positive",
-  "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "theme": "conversion",
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Notices performance uplift since going live.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1450155",
@@ -4929,10 +4929,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "general",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Simple thank you with no specific topic.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1749094",
@@ -6441,10 +6441,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "general",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "No meaningful text; 5 stars indicates positive general.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1815905",
@@ -7197,10 +7197,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Great customer service and quick resolution by named agent.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1863713",
@@ -7323,10 +7323,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "general",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Single word generic praise.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1866761",
@@ -7890,10 +7890,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Praises customer support.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1902011",
@@ -7932,10 +7932,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Complains support only creates tickets with no resolution.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1913286",
@@ -7953,10 +7953,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Praises customer care.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1913297",
@@ -8036,11 +8036,11 @@
   "first_seen": "2026-11-20",
   "last_seen": "2026-11-20",
   "sentiment": "positive",
-  "theme": "general",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "theme": "support",
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Named agent thanked for being helpful.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1922209",
@@ -8058,10 +8058,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Praises customer support as insanely good.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1924630",
@@ -8184,10 +8184,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "setup",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Stuck on KYC document upload and removal.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1967167",
@@ -8225,11 +8225,11 @@
   "first_seen": "2026-11-20",
   "last_seen": "2026-11-20",
   "sentiment": "negative",
-  "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "theme": "setup",
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Issues with app implementation and onboarding.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "1985187",
@@ -8268,10 +8268,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Direct praise for quick customer support.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2005100",
@@ -8288,11 +8288,11 @@
   "first_seen": "2026-11-20",
   "last_seen": "2026-11-20",
   "sentiment": "positive",
-  "theme": "general",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "theme": "conversion",
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Praises checkout solution overall.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2014896",
@@ -8331,10 +8331,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "general",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Generic positive praise with no details.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2030893",
@@ -8856,10 +8856,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "positive",
   "theme": "general",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Five star rating with no substantive text.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2311420",
@@ -8876,11 +8876,11 @@
   "first_seen": "2026-11-20",
   "last_seen": "2026-11-20",
   "sentiment": "negative",
-  "theme": "reliability",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "theme": "support",
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Terrible customer support failed to resolve issue and created another bug.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2320581",
@@ -8898,10 +8898,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "setup",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Frustration regarding installing required app components in Shopify.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2324798",
@@ -8919,10 +8919,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Direct complaint about terrible support.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2335814",
@@ -8940,10 +8940,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "setup",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Stuck trying to integrate the app for 13 days.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2350953",
@@ -8982,10 +8982,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Direct complaint about slow support response.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2403228",
@@ -9003,10 +9003,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "setup",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Issues with reinstalling and setting up the app again.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2410487",
@@ -9024,10 +9024,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Unresponsive technical team with no reply over a month.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2410488",
@@ -9045,10 +9045,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Poor technical team support with no response for over 30 days.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2410497",
@@ -9066,10 +9066,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Technical support failed to deliver solutions or reply for a month.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2410499",
@@ -9087,10 +9087,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Technical team lacked urgency and ownership with no response for month.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2410501",
@@ -9108,10 +9108,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Frustrating technical support delay with no meaningful answer for a month.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2413167",
@@ -9129,10 +9129,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "setup",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Issues with the onboarding process and unhelpful generic email responses.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2418682",
@@ -9150,10 +9150,10 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "general",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Generic negative complaint with no specific details.",
+  "tag_version": "llm-v1"
  },
  {
   "id": "2433162",
@@ -9171,9 +9171,9 @@
   "last_seen": "2026-11-20",
   "sentiment": "negative",
   "theme": "support",
-  "tag_source": "rules",
-  "tag_model": "rules-v1",
-  "tag_reason": "",
-  "tag_version": "rules-v1"
+  "tag_source": "llm",
+  "tag_model": "gemini:gemini-3.8-flash",
+  "tag_reason": "Complains about lack of support.",
+  "tag_version": "llm-v1"
  }
 ]

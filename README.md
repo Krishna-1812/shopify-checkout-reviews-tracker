@@ -7,11 +7,11 @@ When everything is fine it stays silent.
 
 | | |
 |---|---|
-| **Live page** | https://krishna-1812.github.io/shopify-checkout-reviews-tracker/ |
+| **Live page** | https://krishna-1812.github.io/shopify-checkout-reviews-tracker/: reviews per week, sentiment by week and theme mix for each app, the 20 latest reviews with links, tagging accuracy and run health |
 | **Apps tracked** | [Kwik COD & Checkout](https://apps.shopify.com/kwikcheckout) (GoKwik) · [Razorpay COD & Magic Checkout](https://apps.shopify.com/razorpay-checkout) · [Simpl: 1-Click Checkout](https://apps.shopify.com/simpl-checkout) |
 | **Schedule** | Daily at 03:17 UTC (08:47 IST) on GitHub Actions |
 | **Cost** | ₹0: GitHub Actions, GitHub Pages, and an optional free AI tier (Google Gemini or Groq). No paid API, no card |
-| **Tagging check** | [eval/REPORT.md](eval/REPORT.md) |
+| **Tagging check** | 30 reviews labelled blind on the [labelling page](https://krishna-1812.github.io/shopify-checkout-reviews-tracker/label.html). Once `eval/hand_labels.csv` is committed, every run scores the tracker against it, shows the result on the page and writes `eval/REPORT.md` |
 | **Alert proof** | [Issue #1](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/1): simulated "parser found nothing" run, opened by the workflow and closed by the next healthy run. [Issue #2](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/2): a **real** failure the alert caught on day one (see §4) |
 
 ```
@@ -25,7 +25,7 @@ Shopify App Store ──► scrape ──► merge (dedupe by review id) ──�
 
 ## What the data says (20 Nov 2026)
 
-437 reviews: Kwik 397, Razorpay 40, Simpl 0. 305 have text, all AI-tagged; 132 are rating-only.
+438 reviews: Kwik 398, Razorpay 40, Simpl 0. 305 have text, all AI-tagged; 133 are rating-only.
 
 - **Kwik COD & Checkout** is rated 4.6★, but sentiment is sliding.
   - Negative share by year: **3% in 2024, 6% in 2025, 19% in 2026**, while volume fell from
@@ -57,6 +57,11 @@ runs when code under `tracker/`, `site/` or `eval/` changes on `main`, and on de
 | `alert` | only if `track` or `deploy` failed, **timed out or was cancelled** | Opens a GitHub issue labelled `tracker-alert`, or comments on the one already open (no duplicates). Posts to Discord too if `DISCORD_WEBHOOK_URL` is set. |
 | `recover` | only if everything passed | Closes any open `tracker-alert` issue with a link to the healthy run. |
 
+A second workflow, [`.github/workflows/watchdog.yml`](.github/workflows/watchdog.yml), runs every 6 hours.
+It checks `data/runs.json` and opens the same `tracker-alert` issue if no run has happened for 36 hours, because
+a run that never starts can't raise its own alert (§4). It is silent otherwise, and it re-enables the tracker
+workflow if GitHub switched it off.
+
 A normal day reads one page per app (10 newest reviews). The crawler stops at the first page whose
 reviews are all already stored. It walks every page only on the first run, when asked (`full_crawl`),
 or by itself when it holds fewer reviews than Shopify lists. That last case is self-healing for
@@ -71,7 +76,7 @@ every page.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest -q                        # 66 tests, ~1 s, no network
+python -m pytest -q                        # 72 tests, ~1 s, no network
 TAGGER=rules python -m tracker.run         # real scrape, keyword tagging, builds _site/
 python -m http.server -d _site 8000        # open http://localhost:8000
 ```
@@ -80,7 +85,7 @@ To use AI tagging locally, get a free key from [Google AI Studio](https://aistud
 (or [Groq](https://console.groq.com/keys)) and run `GEMINI_API_KEY=... python -m tracker.run`.
 Other commands:
 `python -m tracker.run --full`, `python -m tracker.run --build-only`,
-`python -m tracker.run --simulate empty_result`, `python -m eval.evaluate`.
+`python -m tracker.run --simulate empty_result`, `python -m eval.evaluate`, `python -m tracker.watchdog`.
 
 ### Repository layout
 
@@ -95,12 +100,14 @@ tracker/
     rules.py          keyword + star-rating tagger (fallback and baseline)
     __init__.py       decides what to (re)tag; AI first, rules for anything left
   health.py           the alert rules
+  watchdog.py         the "no run for 36 h" check used by watchdog.yml
   aggregate.py        every number on the page (weekly series, theme mix, latest 20, run health)
   run.py              one run, end to end (the CLI)
 site/                 the page: index.html, app.js (Chart.js), style.css, label.html (blind labelling)
 eval/                 sample.py (picks the 30), evaluate.py (scores), hand_labels.csv, REPORT.md
 data/                 reviews.json (history), runs.json (run log): written by the bot
-tests/                parser, merge, health, aggregation, tagging, evaluation (+ saved App Store pages)
+tests/                parser, merge, health, watchdog, aggregation, tagging, evaluation (+ saved App Store pages)
+.github/workflows/    tracker.yml (the daily run), watchdog.yml (dead-man's switch), ci.yml (tests on PRs)
 ```
 
 ---
@@ -123,14 +130,14 @@ posted date, not the day we first saw it, so a backfill puts reviews in their re
 
 **Tagging.** Every review gets a sentiment (positive / neutral / negative) and **one** main theme.
 The themes are support, setup & onboarding (incl. KYC), bugs & reliability, checkout & conversion,
-COD & RTO, pricing, features and general. I chose them after reading all 438 reviews: most reviews
+COD & RTO, pricing, features and general. I chose them after reading every review: most reviews
 of these apps are about the support team, KYC/onboarding, or whether the checkout works. Definitions
 live once in [`tracker/tagging/taxonomy.py`](tracker/tagging/taxonomy.py). The same text feeds the
 AI prompt, the labelling page and the evaluation.
 
 - **AI:** a free, OpenAI-compatible API, whichever has a key in the repo secrets: **Google Gemini**
   (`GEMINI_API_KEY`, free from AI Studio, no card) first, then **Groq** (`GROQ_API_KEY`).
-  - Reviews go in batches of 15 at temperature 0, with a JSON reply format, and calls are spaced to
+  - Reviews go in batches of 10 at temperature 0, with a JSON reply format, and calls are spaced to
     stay under the free per-minute limits.
   - Any label outside the allowed set is rejected.
   - The model is picked from a preference list checked against the provider's live model list, so a
@@ -156,12 +163,13 @@ AI prompt, the labelling page and the evaluation.
 - **Cost control:** each review is tagged once and cached. A normal day sends 0–1 requests.
 
 **Checking the tagging.** [`eval/sample.py`](eval/sample.py) picks 30 written reviews, stratified by
-app and star band. A purely random 30 would be ~90% "thanks Nikita, great support". These were
+app and star band. A purely random 30 would be ~90% "thanks Nikita, great support". They are
 labelled by hand on [`label.html`](https://krishna-1812.github.io/shopify-checkout-reviews-tracker/label.html),
-which hides the tracker's tags so the human isn't anchored. [`eval/evaluate.py`](eval/evaluate.py)
-compares them with the stored tags. It also scores the rules tagger alone as a baseline, so you can
-see what the AI adds. Results and the two highlighted misses are on the page and in
-[eval/REPORT.md](eval/REPORT.md).
+which hides the tracker's tags so the human isn't anchored, and uses the same definitions and
+tie-breakers the AI is given. [`eval/evaluate.py`](eval/evaluate.py)
+compares them with the stored tags on every run (so the score follows any re-tagging). It also
+scores the rules tagger alone as a baseline, so you can see what the AI adds. The agreement and two
+highlighted misses appear on the page and in `eval/REPORT.md` once `eval/hand_labels.csv` is committed.
 
 **The alert, and why "0 new reviews" is not the signal.** On a normal day there may be no new
 reviews (Razorpay gets a few a month), and Simpl has **no reviews at all**. So "collected 0" can't be
@@ -177,6 +185,7 @@ number:
 | After a full crawl we hold < 95% of what Shopify lists | **alert**: reviews are being missed |
 | A page can't be fetched after retries (403/429/5xx/timeout) | **alert** |
 | Tests fail, the run crashes or hangs past its timeout, the data push or the Pages deploy fails | **alert** (the job fails or is cancelled) |
+| No run at all for 36 h (workflow disabled, workflow file broken, scheduled runs dropped) | **alert** from the watchdog |
 | No new reviews today; Simpl lists 0 and we parsed 0 | silent: healthy |
 | AI tagger unavailable, rules used | silent: warning on the page only |
 
@@ -219,15 +228,19 @@ In rough order of likelihood:
    activity, and scheduled runs can be delayed or dropped when GitHub is busy. **A job that never runs
    can't send its own alert.** Mitigations in place:
    - Every run commits `data/runs.json`, which counts as repository activity.
-   - Every run calls the "enable workflow" API.
+   - Every run calls the "enable workflow" API for both workflows, and the watchdog re-enables the
+     tracker.
+   - **The watchdog** opens an alert issue when no run has happened for 36 hours. This also catches a
+     bad edit to `tracker.yml` (a broken workflow file can't start, so it can't alert).
    - The page header turns **"Stale"** after 36 h without a healthy run.
 
-   For a real dead-man's switch, set `HEARTBEAT_URL` to a free [healthchecks.io](https://healthchecks.io)
-   check. It emails you when the daily ping *doesn't* arrive.
+   The watchdog runs on the same GitHub scheduler, so it can't catch GitHub Actions itself being down.
+   For that, set `HEARTBEAT_URL` to a free [healthchecks.io](https://healthchecks.io) check: it emails
+   you when the daily ping *doesn't* arrive.
 5. **Tag drift.** The model's behaviour or the merchants' topics change, and themes stop fitting
    (e.g. a new "settlements" complaint lands in "general"). Watch the "general" share on the theme
    chart, and re-run the evaluation with fresh labels each quarter.
-6. **Growth.** This is not a near-term risk. 438 reviews take 270 KB, and history grows by a few
+6. **Growth.** This is not a near-term risk. 438 reviews take about 290 KB, and history grows by a few
    KB a week. Past ~50k reviews I'd move to SQLite (see §6).
 
 **What actually broke on day one** (each one is in the git history):

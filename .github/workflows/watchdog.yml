@@ -1,0 +1,75 @@
+# Dead-man's switch for the daily tracker (see tracker/watchdog.py).
+#
+# The tracker's alert job can only fire for a run that starts. This separate
+# workflow checks every 6 hours that a run actually happened recently and opens
+# the same "tracker-alert" issue if none has for 36 hours. It is silent
+# otherwise. The next healthy tracker run closes the issue.
+#
+# To prove it works: Actions > Tracker watchdog > Run workflow > max_age_hours = 0.
+name: Tracker watchdog
+
+on:
+  schedule:
+    - cron: "41 */6 * * *"      # 00:41, 06:41, 12:41, 18:41 UTC
+  workflow_dispatch:
+    inputs:
+      max_age_hours:
+        description: "Alert if the last run is older than this many hours (0 = test the alert)"
+        default: "36"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write               # open the alert issue
+      actions: write              # re-enable the tracker if GitHub switched it off
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Has the tracker run recently?
+        id: check
+        env:
+          MAX_AGE_HOURS: ${{ inputs.max_age_hours || '36' }}
+        run: python -m tracker.watchdog
+
+      - name: Re-enable the tracker workflow
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tracker.yml/enable"
+
+      - name: Open or update the alert issue
+        if: steps.check.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          LABEL="tracker-alert"
+          gh label create "$LABEL" -R "$REPO" --color d03b3b --force \
+            --description "Opened automatically when the daily reviews run fails or collects nothing"
+          { cat alert.md; echo; echo "Watchdog run: $RUN_URL"; echo; echo "_This issue closes itself after the next healthy run._"; } > body.md
+          existing=$(gh issue list -R "$REPO" --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$REPO" --body-file body.md
+            echo "Commented on open alert #$existing"
+          else
+            gh issue create -R "$REPO" --label "$LABEL" --body-file body.md \
+              --title "Reviews tracker alert: no run since $(python -c "import json;r=[x for x in json.load(open('data/runs.json')) if not x.get('simulate')];print(r[-1]['started_at'][:16].replace('T',' ')+' UTC' if r else 'ever')")"
+          fi
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            jq -n --arg c "Reviews tracker alert: $(head -c 1500 body.md)" '{content: $c}' \
+              | curl -fsS -m 15 -H 'Content-Type: application/json' -d @- "$DISCORD_WEBHOOK_URL" || true
+          fi

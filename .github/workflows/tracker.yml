@@ -6,6 +6,8 @@
 #   alert   -> only if something failed, timed out or was cancelled: open (or comment on) a GitHub issue
 #   recover -> only if everything passed: close any open alert issue
 #
+# A run that never starts can't alert on itself: watchdog.yml covers that.
+#
 # To prove the alert works: Actions > Daily reviews tracker > Run workflow >
 # simulate = empty_result (parser finds nothing) or crash (run fails).
 name: Daily reviews tracker
@@ -113,7 +115,9 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tracker.yml/enable"
+        run: |
+          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tracker.yml/enable"
+          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/watchdog.yml/enable"
 
       - name: Optional external heartbeat (dead-man's switch)
         if: steps.run.outputs.health == 'ok'

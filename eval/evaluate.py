@@ -10,6 +10,7 @@ it is visible what the AI adds.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from collections import Counter
 from datetime import date
@@ -21,6 +22,7 @@ from tracker.tagging.taxonomy import SENTIMENTS, THEME_KEYS, THEMES
 LABELS = config.EVAL_DIR / "hand_labels.csv"
 REPORT_JSON = config.EVAL_DIR / "report.json"
 REPORT_MD = config.EVAL_DIR / "REPORT.md"
+LABEL_PAGE = "https://krishna-1812.github.io/shopify-checkout-reviews-tracker/label.html"
 
 
 def load_labels() -> list[dict]:
@@ -49,17 +51,37 @@ def confusion(pairs: list[tuple[str, str]], keys) -> dict:
     return c
 
 
+SOURCE_NAME = {"llm": "AI", "rules": "keyword rules", "stars": "star rating"}
+
+
 def explain(miss: dict) -> str:
-    """One-line reading of why the tracker disagreed (shown on the page)."""
+    """One-line reading of why the tracker disagreed (REPORT.md and the page)."""
     parts = []
     h, t = miss["human"], miss["tracker"]
     if h["sentiment"] != t["sentiment"]:
         parts.append(f"sentiment {t['sentiment']} instead of {h['sentiment']}")
     if h["theme"] != t["theme"]:
         parts.append(f"theme {THEMES[t['theme']][0]} instead of {THEMES[h['theme']][0]}")
-    why = f" Tracker's reason: “{t['reason']}”." if t.get("reason") else ""
+    reason = (t.get("reason") or "").strip().rstrip(".")
+    why = f" Its reason: “{reason}”." if reason else ""
     note = f" My note: {miss['note']}" if miss.get("note") else ""
-    return f"Got the {' and the '.join(parts)} ({t['source']} tag).{why}{note}"
+    return f"Got the {' and the '.join(parts)} ({SOURCE_NAME.get(t['source'], t['source'])} tag).{why}{note}"
+
+
+def labels_fingerprint() -> str:
+    return hashlib.sha256(LABELS.read_bytes()).hexdigest()[:16]
+
+
+def labelled_on(fingerprint: str) -> str:
+    """The date the labels were made, not the date of the latest scoring run:
+    kept from the previous report while hand_labels.csv is unchanged."""
+    try:
+        old = json.loads(REPORT_JSON.read_text(encoding="utf-8"))
+        if old.get("labels_fingerprint") == fingerprint and old.get("labelled_on"):
+            return old["labelled_on"]
+    except (OSError, ValueError):
+        pass
+    return date.today().isoformat()
 
 
 def pick_highlights(misses: list[dict]) -> list[dict]:
@@ -113,17 +135,19 @@ def main() -> int:
     rboth = [(1, int(x["human"]["sentiment"] == x["rules"]["sentiment"] and x["human"]["theme"] == x["rules"]["theme"])) for x in rows]
     sources = Counter(x["tracker"]["source"] for x in rows)
     highlight = pick_highlights(misses)
+    fingerprint = labels_fingerprint()
     report = {
-        "labelled_on": date.today().isoformat(),
+        "labelled_on": labelled_on(fingerprint),
+        "labels_fingerprint": fingerprint,
         "n": len(rows),
-        "tracker_sources": ", ".join(f"{v} {'AI' if k == 'llm' else k}" for k, v in sources.most_common()),
+        "tracker_sources": ", ".join(f"{v} {SOURCE_NAME.get(k, k)}" for k, v in sources.most_common()),
         "tracker": {"sentiment": metric(pairs("tracker", "sentiment")), "theme": metric(pairs("tracker", "theme")),
                     "both": metric(both)},
         "rules_baseline": {"sentiment": metric(pairs("rules", "sentiment")), "theme": metric(pairs("rules", "theme")),
                            "both": metric(rboth)},
         "sentiment_confusion": confusion(pairs("tracker", "sentiment"), SENTIMENTS),
         "theme_confusion": confusion(pairs("tracker", "theme"), THEME_KEYS),
-        "highlight": [{**m, "note": m["explanation"]} for m in highlight],
+        "highlight": highlight,     # each keeps the labeller's own "note" plus the "explanation"
         "misses": misses,
     }
     REPORT_JSON.write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
@@ -138,7 +162,7 @@ def markdown(rep: dict) -> str:
     L = [
         "# Tagging evaluation",
         "",
-        f"{rep['n']} reviews were tagged by hand on the [labelling page](../site/label.html), without seeing the "
+        f"{rep['n']} reviews were tagged by hand on the [labelling page]({LABEL_PAGE}) on {rep['labelled_on']}, without seeing the "
         f"tracker's tags, and compared with the tags the tracker stored ({rep['tracker_sources']}). "
         "The sample is stratified by app and star band (see `eval/sample.py`) so it over-represents the hard, "
         "negative cases; rating-only reviews are excluded because their tag is a fixed rule.",
@@ -149,15 +173,16 @@ def markdown(rep: dict) -> str:
         f"| Theme agrees | **{t['theme']['pct']}%** ({t['theme']['agree']}/{rep['n']}) | {b['theme']['pct']}% ({b['theme']['agree']}/{rep['n']}) |",
         f"| Both agree | **{t['both']['pct']}%** ({t['both']['agree']}/{rep['n']}) | {b['both']['pct']}% ({b['both']['agree']}/{rep['n']}) |",
         "",
-        "## Two cases it got wrong",
+        "## Two cases it got wrong" if len(rep["highlight"]) >= 2 else
+        ("## The case it got wrong" if rep["highlight"] else "## No disagreements in this sample"),
         "",
     ]
     for m in rep["highlight"]:
         L += [f"**{config.APPS_BY_SLUG[m['app']].vendor}, {m['rating']}★** ([review]({m['url']}))", "",
               "> " + m["text"].replace("\n", "\n> "), "",
-              f"- Me: {m['human']['sentiment']} / {m['human']['theme']}",
-              f"- Tracker: {m['tracker']['sentiment']} / {m['tracker']['theme']}",
-              f"- {m['note']}", ""]
+              f"- Me: {m['human']['sentiment']} / {THEMES[m['human']['theme']][0]}",
+              f"- Tracker: {m['tracker']['sentiment']} / {THEMES[m['tracker']['theme']][0]}",
+              f"- {m['explanation']}", ""]
     L += ["## Sentiment confusion (rows = me, columns = tracker)", "",
           "| me \\ tracker | " + " | ".join(SENTIMENTS) + " |", "|---" * (len(SENTIMENTS) + 1) + "|"]
     for h in SENTIMENTS:

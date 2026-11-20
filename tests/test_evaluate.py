@@ -33,6 +33,19 @@ def test_end_to_end_scoring(tmp_path, monkeypatch):
     assert rep["tracker"]["sentiment"]["pct"] == 100.0
     assert rep["tracker"]["theme"] == {"agree": 1, "n": 2, "pct": 50.0}
     assert [m["id"] for m in rep["highlight"]] == ["2"]
-    assert "Setup & onboarding" in rep["highlight"][0]["note"]
-    assert "blocked onboarding" in rep["highlight"][0]["note"]
-    assert "Two cases it got wrong" in (tmp_path / "REPORT.md").read_text()
+    assert "Setup & onboarding" in rep["highlight"][0]["explanation"]
+    assert "blocked onboarding" in rep["highlight"][0]["explanation"]
+    assert rep["highlight"][0]["note"] == "blocked onboarding"     # the labeller's own words, kept apart
+    md = (tmp_path / "REPORT.md").read_text()
+    assert "The case it got wrong" in md and "AI tag" in md and "llm tag" not in md
+
+    # the labelling date sticks while the labels are unchanged, and resets when they change
+    rep["labelled_on"] = "2020-01-01"
+    (tmp_path / "report.json").write_text(json.dumps(rep))
+    evaluate.main()
+    assert json.loads((tmp_path / "report.json").read_text())["labelled_on"] == "2020-01-01"
+    labels.write_text("id,human_sentiment,human_theme,note\n1,positive,support,\n2,negative,support,\n")
+    evaluate.main()
+    after = json.loads((tmp_path / "report.json").read_text())
+    assert after["labelled_on"] != "2020-01-01"
+    assert after["highlight"] == [] and "No disagreements in this sample" in (tmp_path / "REPORT.md").read_text()

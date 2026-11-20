@@ -16,7 +16,7 @@ it is why a non-JSON reply now marks the provider unavailable at once instead of
 being retried batch after batch.
 
 Free tiers are rate limited (roughly 10-30 requests/minute), so reviews go in
-batches of 15, calls are spaced out, and each review is tagged once and cached.
+batches of 10, calls are spaced out, and each review is tagged once and cached.
 """
 from __future__ import annotations
 

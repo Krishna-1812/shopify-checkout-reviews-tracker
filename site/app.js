@@ -230,7 +230,7 @@
     $("#hero-stats").replaceChildren(
       stat("Reviews tracked", total, `posted since ${fmtDate(firstWeek, { month: "short", year: "numeric" })}`),
       stat("Tagged by AI", mix.llm || 0, `${fromStars} rating-only from stars${byRules ? `, ${byRules} by rules` : ""}`),
-      stat("Daily runs so far", runCount, runs.first_at ? `since ${fmtDate(runs.first_at.slice(0, 10))}` : "on GitHub Actions"),
+      stat("Runs so far", runCount, runs.first_at ? `on GitHub Actions since ${fmtDate(runs.first_at.slice(0, 10))}` : "on GitHub Actions"),
       stat("Next run in", nextRun(), "every day at 08:47 IST", { id: "next-run" }));
   }
 
@@ -629,29 +629,50 @@
         el("a", { class: "btn-primary", href: "label.html" }, "Open the labelling page →")));
       return;
     }
-    const tile = (label, m) => el("div", { class: "tile" }, el("div", { class: "stat-label" }, label),
-      el("div", { class: "stat-value" }, `${Math.round(m.pct)}%`, el("small", null, ` ${m.agree} of ${ev.n}`)));
+    const themes = state.data.themes;
+    const themeLabel = (k) => (themes[k] || {}).label || k;
     const base = ev.rules_baseline;
+    const tile = (label, m, b) => el("div", { class: "tile eval-tile" },
+      el("div", { class: "stat-label" }, label),
+      el("div", { class: "stat-value" }, `${Math.round(m.pct)}%`, el("small", null, ` ${m.agree} of ${m.n || ev.n}`)),
+      el("div", { class: "meter", role: "img", "aria-label": `Tracker ${Math.round(m.pct)}%, keyword rules ${Math.round(b.pct)}%` },
+        el("i", { style: `width:${m.pct}%` }), el("b", { style: `left:${b.pct}%`, title: `Keyword rules alone: ${Math.round(b.pct)}%` })),
+      el("div", { class: "meter-cap" }, `Keyword rules alone: ${Math.round(b.pct)}%`));
+    const sentDot = (k) => el("i", { class: "dot", style: `background:${css("--sent-" + k) || css("--baseline")}` });
+    const verdict = (who, tags, other) => el("div", { class: "verdict-row" },
+      el("span", { class: "who" }, who),
+      el("span", { class: "chip" + (other && tags.sentiment !== other.sentiment ? " chip-diff" : "") }, sentDot(tags.sentiment), SENT_LABEL[tags.sentiment] || tags.sentiment),
+      el("span", { class: "chip" + (other && tags.theme !== other.theme ? " chip-diff" : "") }, themeLabel(tags.theme)));
+    const highlights = ev.highlight || [];
+    const heading = highlights.length >= 2 ? "Two cases it got wrong" : highlights.length ? "The case it got wrong" : "No disagreements in this sample";
     const parts = [
       el("div", { class: "eval-grid" },
-        tile("Sentiment agrees with me", ev.tracker.sentiment),
-        tile("Theme agrees with me", ev.tracker.theme),
-        tile("Both agree", ev.tracker.both)),
+        tile("Sentiment agrees with me", ev.tracker.sentiment, base.sentiment),
+        tile("Theme agrees with me", ev.tracker.theme, base.theme),
+        tile("Both agree", ev.tracker.both, base.both)),
       el("p", { class: "sub" },
-        `Tracker tags as they are stored (${ev.tracker_sources}). For comparison, the keyword rules alone agree on sentiment ${Math.round(base.sentiment.pct)}% and theme ${Math.round(base.theme.pct)}% of the time. Labelled ${fmtDate(ev.labelled_on)}.`),
-      el("h3", { style: "margin:18px 0 4px" }, "Two cases it got wrong"),
+        `${ev.n} reviews labelled by hand on ${fmtDate(ev.labelled_on)}. Tracker tags as stored (${ev.tracker_sources}); the marker on each bar is the keyword rules alone, to show what the AI adds.`),
+      el("h3", { class: "miss-head" }, heading),
     ];
-    for (const m of ev.highlight || []) {
+    const misses = el("div", { class: "misses" });
+    for (const m of highlights) {
       const a = appBy(m.app);
-      parts.push(el("div", { class: "miss" },
+      const c = appColor(m.app);
+      const reason = (m.tracker.reason || "").trim().replace(/\.$/, "");
+      misses.append(el("article", { class: "miss", style: `--c:${c}` },
         el("div", { class: "review-meta" },
-          el("span", { class: "review-app" }, el("span", { class: "dot", style: `background:${appColor(m.app)}` }), a ? a.vendor : m.app),
-          stars(m.rating), el("a", { href: m.url, target: "_blank", rel: "noopener" }, "View on Shopify ↗")),
+          el("span", { class: "app-badge" }, el("span", { class: "dot", style: `background:${c}` }), a ? a.vendor : m.app),
+          stars(m.rating),
+          el("a", { class: "open", href: m.url, target: "_blank", rel: "noopener" }, "View on Shopify ↗")),
         el("q", null, !m.text ? "(no text)" : m.text.length > 420 ? m.text.slice(0, 400).trimEnd() + "…" : m.text),
-        el("div", { class: "verdict" }, `Me: ${m.human.sentiment} / ${state.data.themes[m.human.theme].label}. Tracker: ${m.tracker.sentiment} / ${state.data.themes[m.tracker.theme].label}.`),
-        m.note ? el("div", { class: "verdict" }, m.note) : null));
+        el("div", { class: "verdicts" },
+          verdict("Me", m.human, null),
+          verdict(m.tracker.source === "llm" ? "Tracker (AI)" : m.tracker.source === "rules" ? "Tracker (rules)" : "Tracker", m.tracker, m.human)),
+        reason ? el("p", { class: "why" }, el("strong", null, "Its reason: "), `“${reason}”`) : null,
+        m.note ? el("p", { class: "why" }, el("strong", null, "My note: "), m.note) : null));
     }
-    parts.push(el("p", { class: "sub" }, el("a", { href: "https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/blob/main/eval/REPORT.md" }, "Full evaluation report with every disagreement ↗")));
+    if (highlights.length) parts.push(misses);
+    parts.push(el("p", { class: "sub", style: "margin-top:14px" }, el("a", { href: "https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/blob/main/eval/REPORT.md" }, "Full evaluation report with every disagreement ↗")));
     box.replaceChildren(...parts);
   }
 
@@ -677,7 +698,7 @@
         tile("Last healthy run", runs.last_ok_at ? ago(runs.last_ok_at) : "never", null),
         tile("New reviews last run", String(last.totals ? last.totals.new : 0), last.totals ? `${nf.format(last.totals.stored)} stored in total` : null),
         tile("AI tagger", t.llm_status || "–", t.llm_model || (t.llm_status === "not needed" ? "no new written reviews to tag" : null))),
-      el("div", { class: "stat-label" }, "Last 30 runs, oldest first (hollow = simulated alert test)"), strip,
+      el("div", { class: "stat-label" }, `Last ${runs.recent.length} recorded runs, oldest first${runs.recent.some((r) => r.simulate) ? " (hollow = simulated alert test)" : ""}. Hover for details.`), strip,
     ];
     if (last.problems && last.problems.length) {
       parts.push(el("ul", { class: "problems" }, last.problems.map((p) =>
@@ -686,7 +707,7 @@
     }
     const rows = state.data.apps.map((a) => {
       const r = (last.apps || {})[a.slug] || {};
-      return [a.vendor, String(r.declared_total ?? "–"), String(r.parsed ?? "–"), String(r.new ?? "–"), String(r.stored_total ?? "–"), `${r.mode || "–"}, ${r.pages_fetched ?? 0} page(s)`];
+      return [a.vendor, String(r.declared_total ?? "–"), String(r.parsed ?? "–"), String(r.new ?? "–"), String(r.stored_total ?? "–"), `${r.mode || "–"}, ${r.pages_fetched ?? 0} page${(r.pages_fetched ?? 0) === 1 ? "" : "s"}`];
     });
     const tw = el("div", { class: "table-wrap" });
     table(tw, ["App", "Listed on Shopify", "Parsed this run", "New", "Stored", "Crawl"], rows);

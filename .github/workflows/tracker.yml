@@ -51,7 +51,12 @@ jobs:
       health: ${{ steps.run.outputs.health }}
       pages_ready: ${{ steps.pages.outputs.ready }}
     steps:
+      # The newest main, not the commit that triggered the run: a run queued behind
+      # another must start from the data that run just committed (runs are
+      # serialized by the concurrency group above, so this removes the race).
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
@@ -86,8 +91,12 @@ jobs:
           if git diff --cached --quiet; then echo "Nothing to commit"; exit 0; fi
           git commit -q -m "data: run $(date -u +%F) (${{ steps.run.outputs.new_reviews || 0 }} new reviews)"
           for i in 1 2 3; do
-            git pull --rebase -q && git push -q && exit 0
-            sleep $((i * 5))
+            if ! git pull --rebase -q; then
+              git rebase --abort || true
+              echo "::error::data/ changed on main during this run and conflicts; nothing was pushed"; exit 1
+            fi
+            git push -q && exit 0
+            sleep $((i * 5))           # push raced with another push: retry
           done
           echo "::error::could not push data after 3 attempts"; exit 1
 

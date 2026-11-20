@@ -1,0 +1,95 @@
+[
+ {
+  "run_id": "44672888741",
+  "run_url": "https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/actions/runs/44672888741",
+  "trigger": "workflow_dispatch",
+  "simulate": null,
+  "started_at": "2026-11-20T04:13:03+00:00",
+  "finished_at": "2026-11-20T04:15:49+00:00",
+  "apps": {
+   "kwikcheckout": {
+    "mode": "full",
+    "pages_fetched": 41,
+    "parsed": 397,
+    "first_page_count": 10,
+    "declared_total": 397,
+    "overall_rating": 4.6,
+    "rating_counts": {
+     "5": 362,
+     "4": 10,
+     "3": 2,
+     "2": 0,
+     "1": 23
+    },
+    "malformed": 0,
+    "new": 397,
+    "edited": 0,
+    "stored_total": 397,
+    "error": null
+   },
+   "razorpay-checkout": {
+    "mode": "full",
+    "pages_fetched": 5,
+    "parsed": 40,
+    "first_page_count": 10,
+    "declared_total": 40,
+    "overall_rating": 1.9,
+    "rating_counts": {
+     "5": 12,
+     "4": 6,
+     "3": 0,
+     "2": 1,
+     "1": 21
+    },
+    "malformed": 0,
+    "new": 40,
+    "edited": 0,
+    "stored_total": 40,
+    "error": null
+   },
+   "simpl-checkout": {
+    "mode": "full",
+    "pages_fetched": 1,
+    "parsed": 0,
+    "first_page_count": 0,
+    "declared_total": 0,
+    "overall_rating": 0.0,
+    "rating_counts": {
+     "5": 0,
+     "4": 0,
+     "3": 0,
+     "2": 0,
+     "1": 0
+    },
+    "malformed": 0,
+    "new": 0,
+    "edited": 0,
+    "stored_total": 0,
+    "error": null
+   }
+  },
+  "totals": {
+   "parsed": 437,
+   "new": 437,
+   "edited": 0,
+   "stored": 437
+  },
+  "tagging": {
+   "llm_tagged": 0,
+   "rules_tagged": 305,
+   "no_text_tagged": 132,
+   "pending_upgrade": 305,
+   "llm_calls": 21,
+   "llm_model": "openai/gpt-4.1-mini",
+   "llm_status": "partial: JSONDecodeError"
+  },
+  "status": "ok",
+  "problems": [
+   {
+    "level": "warning",
+    "app": null,
+    "message": "AI tagger: partial: JSONDecodeError; rules were used instead"
+   }
+  ]
+ }
+]

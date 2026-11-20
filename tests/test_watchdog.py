@@ -42,3 +42,8 @@ def test_main_writes_output_and_alert(tmp_path, monkeypatch):
     assert watchdog.main([]) == 0
     assert "stale=true" in out.read_text()
     assert "has not run" in (tmp_path / "alert.md").read_text()
+
+
+def test_forced_test_run_says_so():
+    assert "Test of the watchdog alert" in watchdog.alert_markdown("x", 0)
+    assert "has not run" in watchdog.alert_markdown("x", 36)

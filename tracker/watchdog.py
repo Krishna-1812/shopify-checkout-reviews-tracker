@@ -44,8 +44,10 @@ def check(runs: list[dict], now: datetime, max_age_hours: float) -> tuple[bool, 
 
 
 def alert_markdown(message: str, max_age_hours: float) -> str:
+    test = max_age_hours <= 0
     return "\n".join([
-        "**The daily reviews tracker has not run.** (watchdog)",
+        "**Test of the watchdog alert** (run by hand with `max_age_hours = 0`, so any run counts as too old). "
+        "Nothing is actually wrong." if test else "**The daily reviews tracker has not run.** (watchdog)",
         "",
         message,
         "",

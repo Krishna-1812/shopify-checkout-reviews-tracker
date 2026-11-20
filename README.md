@@ -12,7 +12,7 @@ When everything is fine it stays silent.
 | **Schedule** | Daily at 03:17 UTC (08:47 IST) on GitHub Actions |
 | **Cost** | ₹0: GitHub Actions, GitHub Pages, and an optional free AI tier (Google Gemini or Groq). No paid API, no card |
 | **Tagging check** | 30 reviews labelled blind on the [labelling page](https://krishna-1812.github.io/shopify-checkout-reviews-tracker/label.html). Once `eval/hand_labels.csv` is committed, every run scores the tracker against it, shows the result on the page and writes `eval/REPORT.md` |
-| **Alert proof** | [Issue #1](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/1): simulated "parser found nothing" run, opened by the workflow and closed by the next healthy run. [Issue #2](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/2): a **real** failure the alert caught on day one (see §4) |
+| **Alert proof** | [Issue #1](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/1): simulated "parser found nothing" run, opened by the workflow and closed by the next healthy run. [Issue #2](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/2): a **real** failure the alert caught on day one (see §4). [Issue #3](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/3): test of the watchdog ("no run for 36 h") alert |
 
 ```
 Shopify App Store ──► scrape ──► merge (dedupe by review id) ──► tag (AI → rules fallback)
@@ -76,7 +76,7 @@ every page.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest -q                        # 72 tests, ~1 s, no network
+python -m pytest -q                        # 73 tests, ~1 s, no network
 TAGGER=rules python -m tracker.run         # real scrape, keyword tagging, builds _site/
 python -m http.server -d _site 8000        # open http://localhost:8000
 ```

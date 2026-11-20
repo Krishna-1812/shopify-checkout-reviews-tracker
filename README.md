@@ -12,6 +12,7 @@ When everything is fine it stays silent.
 | **Schedule** | Daily at 03:17 UTC (08:47 IST) on GitHub Actions |
 | **Cost** | ₹0: GitHub Actions, GitHub Pages, and an optional free AI tier (Google Gemini or Groq). No paid API, no card |
 | **Tagging check** | [eval/REPORT.md](eval/REPORT.md) |
+| **Alert proof** | [Issue #1](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/1): simulated "parser found nothing" run, opened by the workflow and closed by the next healthy run. [Issue #2](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/2): a **real** failure the alert caught on day one (see §4) |
 
 ```
 Shopify App Store ──► scrape ──► merge (dedupe by review id) ──► tag (AI → rules fallback)
@@ -19,6 +20,25 @@ Shopify App Store ──► scrape ──► merge (dedupe by review id) ──�
                                                                         ▼
          GitHub issue ◄── alert ◄── health check ──► data/runs.json ──► build page ──► GitHub Pages
 ```
+
+---
+
+## What the data says (20 Nov 2026)
+
+437 reviews: Kwik 397, Razorpay 40, Simpl 0. 305 have text, all AI-tagged; 132 are rating-only.
+
+- **Kwik COD & Checkout** is rated 4.6★, but sentiment is sliding.
+  - Negative share by year: **3% in 2024, 6% in 2025, 19% in 2026**, while volume fell from
+    ~25–35 reviews a month in 2025 to a handful in 2026.
+  - Its last two reviews (Oct–Nov 2026) are both negative.
+  - Complaints are mostly **setup/KYC onboarding (10 of 22)** and **support responsiveness (8)**.
+  - Praise is overwhelmingly about named support agents: 55% of written reviews are support-themed.
+- **Razorpay COD & Magic Checkout** is rated 1.9★, and **89% of its 2026 reviews are negative**,
+  mainly about support (12 of 22 complaints) and the checkout not working (4).
+  - Five 1★ reviews landed on **28 Oct 2026 with near-identical wording**, which looks like a
+    coordinated campaign and is worth an anomaly rule (§6).
+- **Simpl: 1-Click Checkout** has **no reviews** on the App Store (listed since April 2024). The
+  tracker checks it daily and treats "listed 0, parsed 0" as healthy.
 
 ---
 
@@ -51,7 +71,7 @@ every page.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest -q                        # 52 tests, ~1 s, no network
+python -m pytest -q                        # 66 tests, ~1 s, no network
 TAGGER=rules python -m tracker.run         # real scrape, keyword tagging, builds _site/
 python -m http.server -d _site 8000        # open http://localhost:8000
 ```
@@ -209,6 +229,15 @@ In rough order of likelihood:
    chart, and re-run the evaluation with fresh labels each quarter.
 6. **Growth.** This is not a near-term risk. 438 reviews take 270 KB, and history grows by a few
    KB a week. Past ~50k reviews I'd move to SQLite (see §6).
+
+**What actually broke on day one** (each one is in the git history):
+
+| Run | What happened | Caught by | Fix |
+|---|---|---|---|
+| 1 | GitHub Models answered `200 OK` (plain text) to every request: the service was retired on 30 Jul 2026 | AI-tagger warning on the page; rules covered every review; no false alert | Moved to free Gemini/Groq; a non-API reply now stops the AI after one call |
+| 3 | Gemini listed `gemini-2.5-flash` but refused it to new keys (404) | Same warning | Model chosen from the provider's live list, newest first, with fallthrough |
+| 4 | Gemini's free tier was overloaded (timeouts, 503, 429); retries ran into the 25-min job timeout, and GitHub reports a timeout as "cancelled", so **no alert fired** | Me, reading the run | Rotate models instead of sleeping, circuit breaker, hard 8-min AI budget; the alert job now also fires on cancelled/timed-out runs |
+| 6 | A queued run started from its trigger commit, not the newest `main`, so its data commit conflicted and the push failed | **The alert** ([issue #2](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/2)), closed automatically by the next healthy run | Check out `main` explicitly; abort conflicting rebases with a clear error |
 
 ---
 

@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hand Labelling</title>
   <meta name="description" content="Blind hand-labelling of 30 reviews to check the tracker's sentiment and theme tags.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap">
   <link rel="stylesheet" href="style.css">
   <style>
     .q { border-top: 1px solid var(--grid); padding: 14px 0; display: grid; gap: 8px; }
@@ -19,22 +22,23 @@
     .row-label { font-size: 12px; color: var(--muted); width: 72px; flex: none; padding-top: 5px; }
     .line { display: flex; gap: 8px; align-items: flex-start; }
     .note { font: inherit; font-size: 13px; width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); }
-    .bar { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between; margin: 0 -18px -14px; border-radius: 0 0 12px 12px; }
-    .btn { font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--ink); background: var(--ink); color: var(--surface); cursor: pointer; }
+    .bar { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between; margin: 0 -24px -18px; border-radius: 0 0 var(--radius) var(--radius); }
+    .btn { font: inherit; font-size: 14px; font-weight: 600; padding: 9px 15px; border-radius: 10px; border: 1px solid var(--ink); background: var(--ink); color: var(--surface); cursor: pointer; }
     .btn.secondary { background: transparent; color: var(--ink); }
     .btn:disabled { opacity: .4; cursor: not-allowed; }
     textarea.csv { width: 100%; height: 160px; font: 12px ui-monospace, monospace; margin-top: 8px; background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
   </style>
 </head>
 <body>
+<div class="backdrop" aria-hidden="true"></div>
 <div class="page">
   <header class="top">
     <div>
-      <h1>Hand-label 30 reviews</h1>
+      <h1 style="font-size:clamp(30px,4.5vw,44px);letter-spacing:-0.03em">Hand-label <em class="accent">30 reviews</em></h1>
       <p class="lede">Tag each review the way you would if no tracker existed. The tracker's own tags are deliberately
         hidden so they can't influence you. Your answers are kept in this browser until you download them.</p>
     </div>
-    <a class="status" href="./">← Back to the tracker</a>
+    <a class="btn-ghost" href="./">← Back to the tracker</a>
   </header>
 
   <section class="panel">

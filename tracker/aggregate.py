@@ -121,6 +121,8 @@ def run_summary(runs: list[dict]) -> dict:
         "last": {k: last.get(k) for k in ("started_at", "status", "problems", "totals",
                                           "tagging", "run_url", "simulate", "apps")} if last else None,
         "last_ok_at": last_ok["started_at"] if last_ok else None,
+        "count": len(real),
+        "first_at": real[0]["started_at"] if real else None,
         "recent": recent,
     }
 

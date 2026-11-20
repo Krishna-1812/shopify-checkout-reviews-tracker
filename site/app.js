@@ -1,18 +1,21 @@
 /* Checkout reviews tracker — page script.
  *
  * Every number shown is computed in Python (tracker/aggregate.py) and shipped
- * in data.json. This file only slices those arrays to the chosen time range
- * and draws them. Review text is untrusted, so it is only ever inserted with
- * textContent, never innerHTML.
+ * in data.json. This file only slices those arrays to the chosen time range,
+ * sums them for the "signals" cards, and draws them. Review text is untrusted,
+ * so it is only ever inserted with textContent, never innerHTML.
  */
 (function () {
   "use strict";
 
+  document.documentElement.classList.add("js");
   const state = { weeks: 0, latestApp: "all", data: null, charts: [] };
   const $ = (sel) => document.querySelector(sel);
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const SENTS = ["positive", "neutral", "negative"];
   const SENT_LABEL = { positive: "Positive", neutral: "Neutral", negative: "Negative" };
+  const NEXT_RUN_UTC = { h: 3, m: 17 };   // matches the cron in .github/workflows/tracker.yml
 
   // ---- small DOM helpers ------------------------------------------------------
   function el(tag, attrs, ...children) {
@@ -46,6 +49,14 @@
     s.innerHTML = paths.join("").replace(/C/g, color);  // static markup, no data
     return s;
   }
+  function arrow(up) {
+    const s = document.createElementNS(svgNS, "svg");
+    s.setAttribute("viewBox", "0 0 12 12");
+    s.setAttribute("aria-hidden", "true");
+    s.innerHTML = up ? '<path d="M6 10V2M2.5 5.5L6 2l3.5 3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+                     : '<path d="M6 2v8M2.5 6.5L6 10l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
+    return s;
+  }
   const appBy = (slug) => state.data.apps.find((a) => a.slug === slug);
   const appColor = (slug) => css(`--app-${slug}`) || appBy(slug).color;
   const nf = new Intl.NumberFormat("en-IN");
@@ -60,6 +71,23 @@
   }
   const pct = (n, d) => (d ? Math.round((100 * n) / d) : 0);
   const sum = (arr) => arr.reduce((a, b) => a + b, 0);
+  function hexA(hex, a) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+    if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+  function countUp(node, target, fmt) {
+    fmt = fmt || ((v) => nf.format(Math.round(v)));
+    if (reduceMotion || !target) { node.textContent = fmt(target); return; }
+    const t0 = performance.now(), dur = 1100;
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 4);
+      node.textContent = fmt(target * e);
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
 
   // ---- range slicing -------------------------------------------------------------
   function sliceIndex() {
@@ -72,24 +100,43 @@
   // ---- Chart.js defaults from tokens ------------------------------------------------
   function chartDefaults() {
     const C = window.Chart;
-    C.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    C.defaults.font.family = css("--font") || "system-ui, sans-serif";
     C.defaults.font.size = 12;
     C.defaults.color = css("--axis");
     C.defaults.borderColor = css("--grid");
-    C.defaults.animation = false;
+    // set fields rather than replacing the object: Chart.js resolves per-property
+    // animation settings (e.g. colour tweening) through this object's scope
+    if (reduceMotion) C.defaults.animation = false;
+    else { C.defaults.animation.duration = 800; C.defaults.animation.easing = "easeOutQuart"; }
     C.defaults.maintainAspectRatio = false;
     const t = C.defaults.plugins.tooltip;
-    t.backgroundColor = css("--surface");
-    t.titleColor = css("--ink-2");
-    t.bodyColor = css("--ink");
-    t.borderColor = css("--border");
-    t.borderWidth = 1;
-    t.padding = 10;
-    t.cornerRadius = 8;
-    t.titleFont = { weight: "normal", size: 12 };
-    t.bodyFont = { weight: "600", size: 12.5 };
-    t.boxPadding = 4;
+    t.enabled = false;              // HTML tooltip instead (see externalTooltip)
+    t.external = externalTooltip;
     C.defaults.plugins.legend.display = false;   // HTML legends instead
+  }
+  // One HTML tooltip per chart. Label callbacks return "name\tvalue[\tdetail]".
+  function externalTooltip(context) {
+    const { chart, tooltip } = context;
+    const parent = chart.canvas.parentNode;
+    let tip = parent.querySelector(":scope > .tip");
+    if (!tip) { tip = el("div", { class: "tip", "aria-hidden": "true" }); parent.append(tip); }
+    if (tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length) { tip.classList.remove("on"); return; }
+    const rows = tooltip.body.map((b, i) => {
+      const dp = tooltip.dataPoints[i];
+      const [name, value, detail] = b.lines.join(" ").split("\t");
+      const sw = (dp && dp.dataset.swatch) || tooltip.labelColors[i].backgroundColor;
+      return el("div", { class: "tip-row" }, el("i", { style: `background:${sw}` }), el("span", null, name), el("b", null, value || ""), detail ? el("em", null, detail) : null);
+    });
+    tip.replaceChildren(el("div", { class: "tip-title" }, (tooltip.title || []).join(" ")), ...rows);
+    tip.classList.add("on");
+    const pw = parent.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = chart.canvas.offsetLeft + tooltip.caretX + 14;
+    if (x + tw > pw - 4) x = chart.canvas.offsetLeft + tooltip.caretX - tw - 14;
+    x = Math.max(4, x);
+    let y = chart.canvas.offsetTop + tooltip.caretY - th / 2;
+    y = Math.max(0, Math.min(y, parent.clientHeight - th));
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
   }
   // vertical hairline that snaps to the hovered week
   const crosshair = {
@@ -102,6 +149,7 @@
       const ctx = chart.ctx;
       ctx.save();
       ctx.strokeStyle = css("--baseline");
+      ctx.setLineDash([3, 3]);
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, top);
@@ -115,13 +163,13 @@
       x: {
         grid: { display: false },
         border: { color: css("--baseline") },
-        ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 7, color: css("--axis") },
+        ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 7, color: css("--axis"), padding: 6 },
       },
       y: Object.assign({
         beginAtZero: true,
         grid: { color: css("--grid") },
         border: { display: false },
-        ticks: { precision: 0, color: css("--axis"), maxTicksLimit: 5 },
+        ticks: { precision: 0, color: css("--axis"), maxTicksLimit: 5, padding: 8 },
       }, extraY || {}),
     };
   }
@@ -150,39 +198,157 @@
     let kind = "good", label = "Healthy";
     if (last.status === "alert" && !last.simulate) { kind = "critical"; label = "Needs attention"; }
     else if (hoursSinceOk > 36) { kind = "warning"; label = "Stale"; }
-    box.replaceChildren(icon(kind), el("strong", null, label),
-      el("span", null, `· updated ${ago(runs.last_ok_at || last.started_at)}`));
+    box.replaceChildren(
+      el("span", { class: "pulse", style: `--pulse:${css("--" + kind)}` }, icon(kind)),
+      el("strong", null, label),
+      el("span", { class: "when" }, `· updated ${ago(runs.last_ok_at || last.started_at)}`));
+  }
+
+  // ---- hero numbers ---------------------------------------------------------------------
+  function nextRun() {
+    const now = new Date();
+    const n = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), NEXT_RUN_UTC.h, NEXT_RUN_UTC.m));
+    if (n <= now) n.setUTCDate(n.getUTCDate() + 1);
+    const mins = Math.max(0, Math.round((n - now) / 60000));
+    return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+  }
+  function renderHero() {
+    const d = state.data;
+    const total = d.apps.reduce((s, a) => s + a.stored_total, 0);
+    const firstWeek = d.weeks.find((w, i) => d.apps.some((a) => d.series[a.slug].total[i] > 0)) || d.weeks[0];
+    const mix = d.tagging || {};
+    const runs = d.runs || {};
+    const runCount = runs.count || (runs.recent || []).filter((r) => !r.simulate).length;
+    const stat = (k, v, s, opts) => {
+      const vNode = el("span", null, "0");
+      const node = el("div", { class: "hero-stat" }, el("div", { class: "k" }, k), el("div", { class: "v" }, vNode, opts && opts.unit ? el("small", null, opts.unit) : null), el("div", { class: "s", title: s }, s));
+      if (typeof v === "number") countUp(vNode, v); else vNode.textContent = v;
+      if (opts && opts.id) vNode.id = opts.id;
+      return node;
+    };
+    const fromStars = mix.stars || 0, byRules = mix.rules || 0;
+    $("#hero-stats").replaceChildren(
+      stat("Reviews tracked", total, `posted since ${fmtDate(firstWeek, { month: "short", year: "numeric" })}`),
+      stat("Tagged by AI", mix.llm || 0, `${fromStars} rating-only from stars${byRules ? `, ${byRules} by rules` : ""}`),
+      stat("Daily runs so far", runCount, runs.first_at ? `since ${fmtDate(runs.first_at.slice(0, 10))}` : "on GitHub Actions"),
+      stat("Next run in", nextRun(), "every day at 08:47 IST", { id: "next-run" }));
   }
 
   // ---- app cards ------------------------------------------------------------------------
+  function sparkline(values, color, id) {
+    const W = 300, H = 48, n = values.length;
+    const max = Math.max(1, ...values);
+    const pts = values.map((v, i) => [n > 1 ? (i / (n - 1)) * W : 0, H - 2 - (v / max) * (H - 6)]);
+    const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+    const area = `${line}L${W},${H}L0,${H}Z`;
+    const s = document.createElementNS(svgNS, "svg");
+    s.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    s.setAttribute("preserveAspectRatio", "none");
+    s.setAttribute("class", "spark");
+    s.setAttribute("aria-hidden", "true");
+    // numbers and a palette colour only: no data strings
+    s.innerHTML = `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".28"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>`
+      + `<path d="${area}" fill="url(#${id})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+    return s;
+  }
   function renderCards() {
-    const wrap = $("#app-cards");
-    wrap.replaceChildren(...state.data.apps.map((a) => {
+    const d = state.data;
+    const colors = { positive: css("--sent-positive"), neutral: css("--sent-neutral"), negative: css("--sent-negative") };
+    $("#app-cards").replaceChildren(...d.apps.map((a, idx) => {
+      const c = appColor(a.slug);
       const head = el("div", { class: "card-head" },
-        el("span", { class: "dot", style: `background:${appColor(a.slug)}` }),
-        el("a", { href: a.store_url, title: a.name }, a.name));
+        el("span", { class: "mono", "aria-hidden": "true" }, a.vendor.slice(0, 1)),
+        el("div", { class: "card-title" }, el("a", { href: a.store_url, title: a.name }, a.name), el("span", null, `by ${a.vendor}`)));
+      const card = el("article", { class: "card reveal", style: `--c:${c};transition-delay:${idx * 80}ms` }, head);
       if (!a.stored_total) {
-        return el("article", { class: "card" }, head,
-          el("p", { class: "empty-note" },
-            a.listed_total === 0
-              ? "No reviews on the Shopify App Store yet. The tracker checks every day and will pick up the first one."
-              : "No reviews collected yet."),
+        card.append(
+          el("div", { class: "empty-card" },
+            el("div", { class: "radar", "aria-hidden": "true" }, el("i"), el("i"), el("i"), el("b")),
+            el("div", null, el("strong", null, a.listed_total === 0 ? "No reviews on the App Store yet" : "No reviews collected yet")),
+            el("div", { style: "font-size:12.5px;color:var(--muted);max-width:240px" }, "The tracker checks every morning and will pick up the first one automatically.")),
           el("div", { class: "card-foot" }, el("a", { href: a.reviews_url }, "Open the App Store listing ↗")));
+        return card;
       }
+      const rating = a.listed_rating !== null ? a.listed_rating : a.avg_rating;
       const negShare = pct(a.last_90d_negative, a.last_90d);
-      return el("article", { class: "card" }, head,
-        el("div", { class: "stats" },
-          el("div", null, el("div", { class: "stat-label" }, "App Store rating"),
-            el("div", { class: "stat-value" }, a.listed_rating !== null ? a.listed_rating.toFixed(1) : "–", el("small", null, " / 5"))),
-          el("div", null, el("div", { class: "stat-label" }, "Reviews tracked"),
-            el("div", { class: "stat-value" }, nf.format(a.stored_total))),
-          el("div", null, el("div", { class: "stat-label" }, "Negative"),
-            el("div", { class: "stat-value" }, `${pct(a.sentiments.negative, a.stored_total)}%`, el("small", null, " all time")))),
-        el("div", { class: "card-foot" },
-          a.last_90d
-            ? `Last 90 days: ${a.last_90d} review${a.last_90d === 1 ? "" : "s"}, ${negShare}% negative · newest ${fmtDate(a.latest_date)}`
-            : `No reviews in the last 90 days · newest ${fmtDate(a.latest_date)}`));
+      const total = a.stored_total;
+      const firstWeek = d.weeks.find((w, i) => d.series[a.slug].total[i] > 0) || d.weeks[0];
+      card.append(
+        el("div", { class: "rating-row" },
+          el("div", { class: "rating-big" }, rating.toFixed(1), el("small", null, "/ 5")),
+          el("div", { style: "text-align:right" },
+            el("span", { class: "star-meter", role: "img", "aria-label": `${rating.toFixed(1)} out of 5 stars` }, "★★★★★",
+              el("span", { style: `width:${(rating / 5) * 100}%` }, "★★★★★")),
+            el("div", { class: "rating-cap" }, `App Store rating · ${nf.format(a.listed_total ?? total)} reviews`))),
+        el("div", { class: "mini-stats" },
+          el("div", { class: "mini" }, el("div", { class: "k" }, "Reviews tracked"), el("div", { class: "v" }, nf.format(total))),
+          el("div", { class: "mini" }, el("div", { class: "k" }, "Last 90 days"),
+            el("div", { class: "v" }, String(a.last_90d), a.last_90d ? el("small", null, ` · ${negShare}% neg.`) : null))),
+        el("div", null,
+          el("div", { class: "sentbar", role: "img", "aria-label": SENTS.map((s) => `${pct(a.sentiments[s], total)}% ${s}`).join(", ") },
+            SENTS.filter((s) => a.sentiments[s]).map((s) => el("i", { style: `width:${(100 * a.sentiments[s]) / total}%;background:${colors[s]}` }))),
+          el("div", { class: "sentbar-key" }, SENTS.map((s) =>
+            el("span", null, el("i", { class: "dot", style: `background:${colors[s]}` }), el("b", null, `${pct(a.sentiments[s], total)}%`), SENT_LABEL[s].toLowerCase())))),
+        el("div", { class: "spark-wrap" },
+          el("div", { class: "k" }, el("span", null, "Reviews per week"), el("span", null, `since ${fmtDate(firstWeek, { month: "short", year: "numeric" })}`)),
+          sparkline(d.series[a.slug].total.slice(d.weeks.indexOf(firstWeek)), c, `sp-${idx}`)),
+        el("div", { class: "card-foot" }, `Newest review ${fmtDate(a.latest_date)} · `, el("a", { href: a.reviews_url }, "all reviews ↗")));
+      return card;
     }));
+  }
+
+  // ---- signals: computed insights ---------------------------------------------------------
+  function yearly(slug) {
+    const d = state.data, s = d.series[slug], by = {};
+    d.weeks.forEach((w, i) => {
+      const y = w.slice(0, 4);
+      by[y] = by[y] || { neg: 0, total: 0 };
+      by[y].neg += s.negative[i];
+      by[y].total += s.total[i];
+    });
+    return Object.entries(by).filter(([, v]) => v.total >= 3).map(([y, v]) => ({ y, ...v, share: v.total ? v.neg / v.total : 0 }));
+  }
+  function renderInsights() {
+    const d = state.data;
+    const thisYear = d.today.slice(0, 4);
+    const cards = [];
+    for (const a of appsWithReviews()) {
+      const ys = yearly(a.slug).slice(-3);
+      if (ys.length < 2) continue;
+      const cur = ys[ys.length - 1], prev = ys[ys.length - 2];
+      const diff = Math.round(100 * cur.share) - Math.round(100 * prev.share);
+      const maxShare = Math.max(0.01, ...ys.map((y) => y.share));
+      cards.push(el("article", { class: "insight reveal", style: `transition-delay:${cards.length * 80}ms` },
+        el("div", { class: "insight-k" }, el("i", { class: "dot", style: `background:${appColor(a.slug)}` }), `${a.vendor} · share of negative reviews`),
+        el("div", null,
+          el("div", { class: "insight-v" }, `${pct(cur.neg, cur.total)}%`, el("small", null, `in ${cur.y}${cur.y === thisYear ? " so far" : ""}`)),
+          el("p", { class: "insight-t", style: "margin-top:8px" },
+            diff ? el("span", { class: `delta ${diff > 0 ? "up" : "down"}` }, arrow(diff > 0), `${Math.abs(diff)} pts vs ${prev.y}`) : el("span", { class: "delta" }, `same as ${prev.y}`),
+            ` ${cur.neg} of ${cur.total} reviews`)),
+        el("div", { class: "ybars", role: "img", "aria-label": ys.map((y) => `${y.y}: ${pct(y.neg, y.total)}% negative`).join(", ") },
+          ys.map((y) => el("div", { class: "ybar" + (y === cur ? " now" : "") },
+            el("span", { class: "val" }, `${pct(y.neg, y.total)}%`),
+            el("span", { class: "col", style: `height:${Math.max(3, (y.share / maxShare) * 58)}px` }),
+            el("span", { class: "yr" }, y.y))))));
+    }
+    // why merchants complain: negative written reviews by theme, all apps, all time
+    const themes = Object.keys(d.themes).filter((t) => t !== "general");
+    const negBy = themes.map((t) => ({ t, n: sum(d.apps.map((a) => sum(d.series[a.slug].themes_negative[t] || []))) }))
+      .filter((x) => x.n > 0).sort((x, y) => y.n - x.n);
+    const negAll = sum(d.apps.map((a) => sum(Object.values(d.series[a.slug].themes_negative).map(sum))));
+    if (negBy.length) {
+      const top = negBy[0], top4 = negBy.slice(0, 4);
+      cards.push(el("article", { class: "insight reveal", style: `transition-delay:${cards.length * 80}ms` },
+        el("div", { class: "insight-k" }, "Top reason for negative reviews · all apps"),
+        el("div", null,
+          el("div", { class: "insight-v", style: "font-size:30px;letter-spacing:-0.03em" }, d.themes[top.t].label),
+          el("p", { class: "insight-t", style: "margin-top:8px" }, `${top.n} of ${negAll} negative written reviews (${pct(top.n, negAll)}%)`)),
+        el("ul", { class: "tlist" }, top4.map((x) => el("li", null,
+          el("span", null, d.themes[x.t].label), el("b", null, String(x.n)),
+          el("span", { class: "bar" }, el("i", { style: `width:${(100 * x.n) / top.n}%` })))))));
+    }
+    $("#insights").replaceChildren(...cards);
+    if (!cards.length) $("#signals").hidden = true;
   }
 
   // ---- reviews per week ------------------------------------------------------------------
@@ -196,31 +362,43 @@
       type: "line",
       data: {
         labels,
-        datasets: apps.map((a) => ({
-          label: a.vendor,
-          data: cut(d.series[a.slug].total),
-          borderColor: appColor(a.slug),
-          backgroundColor: appColor(a.slug),
-          borderWidth: 2,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          pointHoverBorderWidth: 2,
-          pointHoverBorderColor: css("--surface"),
-          tension: 0,
-          borderJoinStyle: "round",
-          borderCapStyle: "round",
-        })),
+        datasets: apps.map((a) => {
+          const c = appColor(a.slug);
+          return {
+            label: a.vendor,
+            swatch: c,
+            data: cut(d.series[a.slug].total),
+            borderColor: c,
+            backgroundColor: (ctx) => {
+              const area = ctx.chart.chartArea;
+              if (!area) return "transparent";
+              const g = ctx.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+              g.addColorStop(0, hexA(c, 0.16));
+              g.addColorStop(1, hexA(c, 0));
+              return g;
+            },
+            fill: "origin",
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointHoverBorderWidth: 2,
+            pointHoverBackgroundColor: c,
+            pointHoverBorderColor: css("--surface"),
+            tension: 0.35,
+            cubicInterpolationMode: "monotone",
+            borderJoinStyle: "round",
+            borderCapStyle: "round",
+          };
+        }),
       },
       options: {
         interaction: { mode: "index", intersect: false },
         scales: axes(),
         plugins: {
           tooltip: {
-            usePointStyle: true,
             callbacks: {
               title: (items) => `Week of ${fmtDate(labels[items[0].dataIndex])}`,
-              label: (item) => ` ${item.formattedValue}  ${item.dataset.label}`,
-              labelPointStyle: () => ({ pointStyle: "line", rotation: 0 }),
+              label: (item) => `${item.dataset.label}\t${item.formattedValue}`,
             },
           },
         },
@@ -272,23 +450,27 @@
             label: SENT_LABEL[k],
             data: cut(s[k]),
             backgroundColor: colors[k],
-            borderColor: css("--surface"),
+            borderColor: css("--surface-2"),
             borderWidth: { top: 2, right: 0, bottom: 0, left: 0 },
             borderSkipped: false,
-            maxBarThickness: 24,
+            borderRadius: 2,
+            maxBarThickness: 22,
             categoryPercentage: 0.9,
             barPercentage: 1,
           })),
         },
         options: {
           interaction: { mode: "index", intersect: false },
-          scales: (() => { const sc = axes(); sc.x.stacked = true; sc.y.stacked = true; sc.x.ticks.maxTicksLimit = 4; return sc; })(),
+          // borderWidth is a per-side object here (the 2px gap between stacked
+          // segments); Chart.js can't tween objects, so leave it out of the tween
+          animations: { numbers: { type: "number", properties: ["x", "y", "base", "width", "height"] } },
+          scales: (() => { const sc = axes(); sc.x.stacked = true; sc.y.stacked = true; sc.x.ticks.maxTicksLimit = 4; sc.y.grid.color = css("--grid"); return sc; })(),
           plugins: {
             tooltip: {
               filter: (item) => item.raw > 0,
               callbacks: {
                 title: (items) => `${a.vendor} · week of ${fmtDate(labels[items[0].dataIndex])}`,
-                label: (item) => ` ${item.raw}  ${item.dataset.label}`,
+                label: (item) => `${item.dataset.label}\t${item.raw}`,
               },
             },
           },
@@ -327,11 +509,11 @@
       const m = (t) => sum(apps.map((a) => share(a.slug, t))) / Math.max(apps.length, 1);
       return m(y) - m(x);
     });
-    legend($("#theme-legend"), apps.map((a) => ({ label: `${a.vendor} (${totals[a.slug]} written reviews)`, color: appColor(a.slug) })), "rect");
+    legend($("#theme-legend"), apps.map((a) => ({ label: `${a.vendor} (${totals[a.slug]} written)`, color: appColor(a.slug) })), "rect");
     const skipped = apps.map((a) => `${sum(cut(d.series[a.slug].no_text))} for ${a.vendor}`).join(", ");
     $("#theme-note").textContent = apps.length ? `Rating-only reviews have no text to classify, so they are left out here (${skipped}).` : "";
     const wrap = $("#theme-chart-wrap");
-    wrap.style.height = `${Math.max(220, order.length * (apps.length * 16 + 18) + 40)}px`;
+    wrap.style.height = `${Math.max(220, order.length * (apps.length * 16 + 20) + 40)}px`;
     if (!apps.length) {
       wrap.replaceChildren(el("div", { class: "empty-note" }, "No reviews in this range."));
     } else {
@@ -358,7 +540,7 @@
           scales: {
             x: { beginAtZero: true, grid: { color: css("--grid") }, border: { display: false },
                  ticks: { callback: (v) => `${v}%`, color: css("--axis"), maxTicksLimit: 6 } },
-            y: { grid: { display: false }, border: { color: css("--baseline") }, ticks: { color: css("--ink-2") } },
+            y: { grid: { display: false }, border: { color: css("--baseline") }, ticks: { color: css("--ink-2"), font: { size: 12.5, weight: "500" }, padding: 8 } },
           },
           plugins: {
             tooltip: {
@@ -366,7 +548,7 @@
                 title: (items) => items[0].label,
                 label: (item) => {
                   const slug = item.dataset.slug, t = order[item.dataIndex];
-                  return ` ${Math.round(share(slug, t))}%  ${item.dataset.label} · ${counts[slug][t]} reviews, ${negs[slug][t]} negative`;
+                  return `${item.dataset.label}\t${Math.round(share(slug, t))}%\t${counts[slug][t]} reviews, ${negs[slug][t]} negative`;
                 },
               },
             },
@@ -391,6 +573,10 @@
       onclick: () => { state.latestApp = o.slug; save(); renderLatestFilter(); renderLatest(); },
     }, o.color ? el("span", { class: "dot", style: `background:${o.color}` }) : null, o.label)));
   }
+  function initial(name) {
+    const m = /[\p{L}\p{N}]/u.exec(name || "");
+    return m ? m[0].toUpperCase() : "?";
+  }
   function renderLatest() {
     const d = state.data;
     const sentColor = { positive: css("--sent-positive"), neutral: css("--sent-neutral"), negative: css("--sent-negative") };
@@ -403,23 +589,27 @@
     }
     box.replaceChildren(...list.map((r) => {
       const a = appBy(r.app);
+      const c = appColor(r.app);
       const text = el("p", { class: "review-text" + (r.text ? "" : " empty") }, r.text || "Rating only, no written review.");
-      const item = el("li", { class: "review" },
-        el("div", { class: "review-meta" },
-          el("span", { class: "review-app" }, el("span", { class: "dot", style: `background:${appColor(r.app)}` }), a.vendor),
-          stars(r.rating), el("span", null, fmtDate(r.date)),
-          el("span", null, [r.store, r.country].filter(Boolean).join(" · "))),
-        text,
+      const item = el("li", { class: "review", style: `--c:${c}` },
+        el("div", { class: "review-top" },
+          el("span", { class: "avatar", "aria-hidden": "true" }, initial(r.store)),
+          el("div", { class: "who" }, el("strong", null, r.store || "Merchant"),
+            el("span", null, [r.country, fmtDate(r.date)].filter(Boolean).join(" · "))),
+          el("span", { class: "app-badge" }, el("span", { class: "dot", style: `background:${c}` }), a.vendor)),
+        stars(r.rating),
+        text);
+      if (r.text && r.text.length > 260) {
+        text.classList.add("clamp");
+        const btn = el("button", { class: "more", type: "button", onclick: () => { text.classList.toggle("clamp"); btn.textContent = text.classList.contains("clamp") ? "Show more" : "Show less"; } }, "Show more");
+        item.append(btn);
+      }
+      item.append(el("div", { class: "review-foot" },
         el("div", { class: "chips" },
           el("span", { class: "chip", title: r.tag_reason || null }, el("i", { class: "key-rect", style: `background:${sentColor[r.sentiment] || css("--baseline")}` }), SENT_LABEL[r.sentiment] || "Untagged"),
           el("span", { class: "chip" }, (d.themes[r.theme] || {}).label || "Untagged"),
-          el("span", { class: "chip chip-src" }, r.tag_source === "llm" ? "AI tag" : r.tag_source === "rules" ? "rules tag" : "from stars"),
-          el("a", { class: "open", href: r.url, target: "_blank", rel: "noopener" }, "View on Shopify ↗")));
-      if (r.text && r.text.length > 320) {
-        text.classList.add("clamp");
-        const btn = el("button", { class: "more", type: "button", onclick: () => { text.classList.toggle("clamp"); btn.textContent = text.classList.contains("clamp") ? "Show more" : "Show less"; } }, "Show more");
-        text.after(btn);
-      }
+          el("span", { class: "chip chip-src" }, r.tag_source === "llm" ? "AI tag" : r.tag_source === "rules" ? "rules tag" : "from stars")),
+        el("a", { class: "open", href: r.url, target: "_blank", rel: "noopener" }, "View on Shopify ↗")));
       return item;
     }));
   }
@@ -430,11 +620,13 @@
     const box = $("#eval");
     if (!ev) {
       box.replaceChildren(el("div", { class: "callout" },
-        "The hand-labelled check has not been recorded yet. To run it:",
-        el("ol", null,
-          el("li", null, "Open the ", el("a", { href: "label.html" }, "labelling page"), " (30 reviews, tracker tags hidden) and tag each one."),
-          el("li", null, "Download the CSV and commit it as eval/hand_labels.csv."),
-          el("li", null, "The next run computes agreement and shows it here."))));
+        el("h3", null, "The hand-labelled check is on its way"),
+        el("div", null, "A person tags 30 reviews blind, and every run scores the tracker against those labels."),
+        el("ol", { class: "steps" },
+          el("li", null, "Open the labelling page: 30 reviews, with the tracker's tags hidden."),
+          el("li", null, "Tag each one, then download hand_labels.csv."),
+          el("li", null, "Commit it as eval/hand_labels.csv. The next run shows agreement here.")),
+        el("a", { class: "btn-primary", href: "label.html" }, "Open the labelling page →")));
       return;
     }
     const tile = (label, m) => el("div", { class: "tile" }, el("div", { class: "stat-label" }, label),
@@ -447,7 +639,7 @@
         tile("Both agree", ev.tracker.both)),
       el("p", { class: "sub" },
         `Tracker tags as they are stored (${ev.tracker_sources}). For comparison, the keyword rules alone agree on sentiment ${Math.round(base.sentiment.pct)}% and theme ${Math.round(base.theme.pct)}% of the time. Labelled ${fmtDate(ev.labelled_on)}.`),
-      el("h3", { style: "margin:14px 0 4px" }, "Two cases it got wrong"),
+      el("h3", { style: "margin:18px 0 4px" }, "Two cases it got wrong"),
     ];
     for (const m of ev.highlight || []) {
       const a = appBy(m.app);
@@ -478,13 +670,14 @@
       }));
     const t = last.tagging || {};
     const mix = state.data.tagging;
+    const tile = (k, v, s) => el("div", { class: "tile" }, el("div", { class: "stat-label" }, k), el("div", { class: "v" }, v), s ? el("div", { class: "s" }, s) : null);
     const parts = [
-      el("div", { class: "health-row" },
-        el("span", null, "Last run ", el("strong", null, ago(last.started_at)), last.run_url ? [" · ", el("a", { href: last.run_url }, "logs ↗")] : null),
-        el("span", null, "Last healthy run ", el("strong", null, runs.last_ok_at ? ago(runs.last_ok_at) : "never")),
-        el("span", null, "New reviews last run ", el("strong", null, String(last.totals ? last.totals.new : 0))),
-        el("span", null, "AI tagger ", el("strong", null, `${t.llm_status || "–"}`), t.llm_model ? ` (${t.llm_model})` : null)),
-      el("div", { class: "stat-label" }, "Last 30 runs (hollow = simulated alert test)"), strip,
+      el("div", { class: "health-tiles" },
+        tile("Last run", ago(last.started_at), last.run_url ? el("a", { href: last.run_url }, "View logs ↗") : null),
+        tile("Last healthy run", runs.last_ok_at ? ago(runs.last_ok_at) : "never", null),
+        tile("New reviews last run", String(last.totals ? last.totals.new : 0), last.totals ? `${nf.format(last.totals.stored)} stored in total` : null),
+        tile("AI tagger", t.llm_status || "–", t.llm_model || (t.llm_status === "not needed" ? "no new written reviews to tag" : null))),
+      el("div", { class: "stat-label" }, "Last 30 runs, oldest first (hollow = simulated alert test)"), strip,
     ];
     if (last.problems && last.problems.length) {
       parts.push(el("ul", { class: "problems" }, last.problems.map((p) =>
@@ -498,9 +691,39 @@
     const tw = el("div", { class: "table-wrap" });
     table(tw, ["App", "Listed on Shopify", "Parsed this run", "New", "Stored", "Crawl"], rows);
     parts.push(tw);
-    parts.push(el("p", { class: "sub" }, "How every stored review was tagged: " +
+    parts.push(el("p", { class: "sub", style: "margin-top:12px" }, "How every stored review was tagged: " +
       Object.entries(mix).map(([k, v]) => `${v} ${k === "llm" ? "by AI" : k === "rules" ? "by keyword rules" : k === "stars" ? "from stars (no text)" : k}`).join(", ") + "."));
     box.replaceChildren(...parts);
+  }
+
+  // ---- motion & navigation -----------------------------------------------------------------------------------
+  let revealer = null;
+  function observeReveals() {
+    const nodes = document.querySelectorAll(".reveal:not(.in)");
+    if (reduceMotion || !("IntersectionObserver" in window)) { nodes.forEach((n) => n.classList.add("in")); return; }
+    if (!revealer) {
+      revealer = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          e.target.classList.add("in");
+          revealer.unobserve(e.target);
+          // replay the chart entrance once the panel is actually on screen
+          state.charts.filter((c) => e.target.contains(c.canvas)).forEach((c) => { c.reset(); c.update(); });
+        }
+      }, { threshold: 0.08, rootMargin: "0px 0px -4% 0px" });
+    }
+    nodes.forEach((n) => revealer.observe(n));
+  }
+  function trackSections() {
+    if (!("IntersectionObserver" in window)) return;
+    const links = [...document.querySelectorAll(".toc a")];
+    const byId = Object.fromEntries(links.map((a) => [a.getAttribute("href").slice(1), a]));
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { links.forEach((a) => a.classList.remove("active")); byId[e.target.id].classList.add("active"); }
+      }
+    }, { rootMargin: "-35% 0px -60% 0px" });
+    Object.keys(byId).forEach((id) => { const s = document.getElementById(id); if (s) io.observe(s); });
   }
 
   // ---- orchestration ---------------------------------------------------------------------------------------
@@ -522,36 +745,43 @@
     renderThemes();
     const n = state.data.weeks.length;
     const first = state.data.weeks[sliceIndex()];
-    $("#range-note").textContent = `${fmtDate(first)} to today · ${n - sliceIndex()} weeks · current week is partial`;
+    $("#range-note").textContent = `Showing ${fmtDate(first)} to today (${n - sliceIndex()} weeks; the current week is partial).`;
     document.querySelectorAll("#range button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.weeks) === state.weeks)));
   }
   function renderAll() {
     renderStatus();
+    renderHero();
     renderCards();
+    renderInsights();
     renderCharts();
     renderLatestFilter();
     renderLatest();
     renderEval();
     renderHealth();
     $("#generated").textContent = `Page built ${new Date(state.data.generated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} from ${nf.format(state.data.apps.reduce((s, a) => s + a.stored_total, 0))} stored reviews.`;
+    observeReveals();
   }
 
   document.querySelectorAll("#range button").forEach((b) =>
     b.addEventListener("click", () => { state.weeks = Number(b.dataset.weeks); save(); renderCharts(); }));
-  if (window.matchMedia) {
-    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => state.data && renderAll());
-  }
+  setInterval(() => { const n = $("#next-run"); if (n) n.textContent = nextRun(); }, 30000);
 
   restore();
+  observeReveals();
+  trackSections();
   fetch("data.json", { cache: "no-cache" })
     .then((r) => { if (!r.ok) throw new Error(`data.json: HTTP ${r.status}`); return r.json(); })
     .then((data) => {
       state.data = data;
       if (!window.Chart) throw new Error("the chart library did not load");
-      renderAll();
+      const go = () => renderAll();
+      // draw once the web font is in, so canvas text uses it too
+      if (document.fonts && document.fonts.ready) return Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1200))]).then(go);
+      go();
     })
     .catch((err) => {
       $("#status").replaceChildren(icon("critical"), el("strong", null, "Could not load data"), el("span", null, String(err.message || err)));
+      document.querySelectorAll(".reveal").forEach((n) => n.classList.add("in"));
       if (state.data) { renderCards(); renderLatestFilter(); renderLatest(); renderEval(); renderHealth(); }
     });
 })();

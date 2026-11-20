@@ -5,72 +5,126 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Checkout Reviews Tracker</title>
   <meta name="description" content="What merchants say about Kwik COD & Checkout, Razorpay Magic Checkout and Simpl 1-Click Checkout on the Shopify App Store, collected and tagged every day.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 21l5-6 4 4 7-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#f5f6fa">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232a78d6'/%3E%3Cstop offset='1' stop-color='%231baf7a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M8 20l5-6 4 4 7-8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="page">
+<div class="backdrop" aria-hidden="true"></div>
 
-  <header class="top">
-    <div>
-      <h1>Checkout app reviews tracker</h1>
-      <p class="lede">Public merchant reviews of three checkout apps on the Shopify App Store, collected every day,
-        de-duplicated and tagged with a sentiment and a main theme.</p>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="./" aria-label="Checkout reviews tracker, home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path d="M8 20l5-6 4 4 7-8" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="brand-name">Checkout&nbsp;Reviews<span class="brand-sub">Tracker</span></span>
+    </a>
+    <div class="nav-right">
+      <div id="status" class="status" role="status" aria-live="polite"><span class="status-text">Loading…</span></div>
+      <a class="btn-ghost" href="https://github.com/Krishna-1812/shopify-checkout-reviews-tracker" aria-label="Source code on GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+      </a>
     </div>
-    <div id="status" class="status" role="status" aria-live="polite">Loading…</div>
-  </header>
+  </div>
+</header>
 
-  <section aria-labelledby="apps-h">
-    <h2 id="apps-h" class="sr-only">The three apps</h2>
+<main class="page">
+
+  <section class="hero reveal" aria-labelledby="hero-h">
+    <p class="eyebrow-chip"><span class="live-dot" aria-hidden="true"></span>Shopify App Store · refreshed every morning</p>
+    <h1 id="hero-h">What merchants really say about India's <em class="accent">checkout apps</em></h1>
+    <p class="lede">Every public review of <strong>Kwik COD &amp; Checkout</strong>, <strong>Razorpay Magic Checkout</strong> and
+      <strong>Simpl 1-Click Checkout</strong>, collected daily, counted once, and tagged with a sentiment and the one theme it's really about.</p>
+    <div class="hero-stats" id="hero-stats"></div>
+  </section>
+
+  <section class="block" id="apps" aria-labelledby="apps-h">
+    <div class="block-head reveal">
+      <span class="eyebrow">01 · The apps</span>
+      <h2 id="apps-h">Three checkout apps, side by side</h2>
+    </div>
     <div id="app-cards" class="cards"></div>
   </section>
 
-  <div class="filters" role="group" aria-label="Time range for the charts">
-    <span class="filters-label">Range</span>
-    <div class="seg" id="range">
-      <button type="button" data-weeks="12">12 weeks</button>
-      <button type="button" data-weeks="26">26 weeks</button>
-      <button type="button" data-weeks="52">1 year</button>
-      <button type="button" data-weeks="0">All time</button>
+  <section class="block" id="signals" aria-labelledby="signals-h">
+    <div class="block-head reveal">
+      <span class="eyebrow">02 · Signals</span>
+      <h2 id="signals-h">What stands out</h2>
+      <p class="sub">Worked out from the data each time the page is built, so these update themselves.</p>
     </div>
-    <span class="filters-note" id="range-note"></span>
+    <div id="insights" class="insights"></div>
+  </section>
+
+  <div class="toolbar" id="toolbar">
+    <nav class="toc" aria-label="Sections">
+      <a href="#volume">Volume</a>
+      <a href="#sentiment">Sentiment</a>
+      <a href="#themes">Themes</a>
+      <a href="#latest-reviews">Latest</a>
+      <a href="#accuracy">Accuracy</a>
+      <a href="#health-sec">Health</a>
+    </nav>
+    <div class="range-wrap" role="group" aria-label="Time range for the charts">
+      <span class="range-label">Chart range</span>
+      <div class="seg" id="range">
+        <button type="button" data-weeks="12">12w</button>
+        <button type="button" data-weeks="26">26w</button>
+        <button type="button" data-weeks="52">1y</button>
+        <button type="button" data-weeks="0">All</button>
+      </div>
+    </div>
   </div>
 
-  <section class="panel" aria-labelledby="vol-h">
+  <section class="panel reveal" id="volume" aria-labelledby="vol-h">
     <div class="panel-head">
-      <h2 id="vol-h">Reviews per week</h2>
-      <p class="sub">New reviews posted each week (Monday–Sunday), by app.</p>
+      <div>
+        <span class="eyebrow">03 · Volume</span>
+        <h2 id="vol-h">Reviews per week</h2>
+        <p class="sub">New reviews posted each week (Monday–Sunday), by app. <span id="range-note"></span></p>
+      </div>
+      <div class="legend" id="vol-legend"></div>
     </div>
-    <div class="legend" id="vol-legend"></div>
     <div class="chart chart-lg"><canvas id="vol-chart" aria-label="Line chart of reviews per week for each app" role="img"></canvas></div>
     <details class="table-view"><summary>Show as table</summary><div id="vol-table" class="table-wrap"></div></details>
   </section>
 
-  <section class="panel" aria-labelledby="sent-h">
+  <section class="panel reveal" id="sentiment" aria-labelledby="sent-h">
     <div class="panel-head">
-      <h2 id="sent-h">Sentiment by week</h2>
-      <p class="sub">Positive, neutral and negative reviews per week. Each app has its own scale.</p>
+      <div>
+        <span class="eyebrow">04 · Sentiment</span>
+        <h2 id="sent-h">Sentiment by week</h2>
+        <p class="sub">Positive, neutral and negative reviews per week. Each app has its own scale.</p>
+      </div>
+      <div class="legend" id="sent-legend"></div>
     </div>
-    <div class="legend" id="sent-legend"></div>
     <div class="multiples" id="sent-multiples"></div>
     <details class="table-view"><summary>Show as table</summary><div id="sent-table" class="table-wrap"></div></details>
   </section>
 
-  <section class="panel" aria-labelledby="theme-h">
+  <section class="panel reveal" id="themes" aria-labelledby="theme-h">
     <div class="panel-head">
-      <h2 id="theme-h">Theme mix</h2>
-      <p class="sub">Share of each app's written reviews in the selected range, by main theme. Hover a bar for counts and how many were negative.</p>
+      <div>
+        <span class="eyebrow">05 · Themes</span>
+        <h2 id="theme-h">Theme mix</h2>
+        <p class="sub">Share of each app's written reviews in the selected range, by main theme. Hover a bar for counts and how many were negative.</p>
+      </div>
+      <div class="legend" id="theme-legend"></div>
     </div>
-    <div class="legend" id="theme-legend"></div>
-    <p class="sub" id="theme-note" style="margin:-2px 0 8px"></p>
+    <p class="note" id="theme-note"></p>
     <div class="chart" id="theme-chart-wrap"><canvas id="theme-chart" aria-label="Bar chart of theme share per app" role="img"></canvas></div>
     <details class="table-view"><summary>Show as table</summary><div id="theme-table" class="table-wrap"></div></details>
     <details class="defs"><summary>What each theme means</summary><dl id="theme-defs"></dl></details>
   </section>
 
-  <section class="panel" aria-labelledby="latest-h">
-    <div class="panel-head row">
+  <section class="panel reveal" id="latest-reviews" aria-labelledby="latest-h">
+    <div class="panel-head">
       <div>
+        <span class="eyebrow">06 · Voices</span>
         <h2 id="latest-h">20 latest reviews</h2>
         <p class="sub">Newest first. Each one links to the review on the Shopify App Store.</p>
       </div>
@@ -79,28 +133,38 @@
     <ol class="reviews" id="latest"></ol>
   </section>
 
-  <section class="panel" aria-labelledby="eval-h">
+  <section class="panel reveal" id="accuracy" aria-labelledby="eval-h">
     <div class="panel-head">
-      <h2 id="eval-h">How accurate is the tagging?</h2>
-      <p class="sub">30 reviews were tagged by hand, without seeing the tracker's tags, then compared with what the tracker chose.</p>
+      <div>
+        <span class="eyebrow">07 · Accuracy</span>
+        <h2 id="eval-h">How accurate is the tagging?</h2>
+        <p class="sub">30 reviews tagged by hand, without seeing the tracker's tags, then compared with what the tracker chose.</p>
+      </div>
     </div>
     <div id="eval"></div>
   </section>
 
-  <section class="panel" aria-labelledby="health-h">
+  <section class="panel reveal" id="health-sec" aria-labelledby="health-h">
     <div class="panel-head">
-      <h2 id="health-h">Run health</h2>
-      <p class="sub">The tracker runs every day on GitHub Actions. A failed run, or one that quietly collects nothing, opens a GitHub issue.</p>
+      <div>
+        <span class="eyebrow">08 · Reliability</span>
+        <h2 id="health-h">Run health</h2>
+        <p class="sub">Runs every day on GitHub Actions. A failed run, or one that quietly collects nothing, opens a GitHub issue.</p>
+      </div>
     </div>
     <div id="health"></div>
   </section>
 
   <footer class="foot">
+    <div class="foot-brand">
+      <span class="brand-mark sm" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M8 20l5-6 4 4 7-8" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <strong>Checkout Reviews Tracker</strong>
+    </div>
     <p>Data: public reviews from <a href="https://apps.shopify.com/">apps.shopify.com</a>. Tags: a free AI tier (Gemini or Groq) when a key is set, otherwise keyword rules.
       Code, data and handover notes are in the <a href="https://github.com/Krishna-1812/shopify-checkout-reviews-tracker">GitHub repository</a>.</p>
     <p id="generated"></p>
   </footer>
-</div>
+</main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="app.js"></script>

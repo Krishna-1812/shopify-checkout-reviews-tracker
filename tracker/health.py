@@ -15,7 +15,8 @@ Instead each app's page header says how many reviews Shopify holds
 * the request itself failed after retries       -> blocked / down (error)
 * nothing parsed across every app               -> run collected nothing (error)
 
-Warnings (shown on the page, never alerted): the AI tagger fell back to rules.
+Warnings (shown on the page, never alerted): the AI tagger was configured but
+failed, so rules were used.
 """
 from __future__ import annotations
 
@@ -57,7 +58,7 @@ def evaluate(run: dict) -> list[dict]:
 
     tagging = run.get("tagging") or {}
     status = tagging.get("llm_status", "")
-    if status and status not in ("ok", "not needed"):
+    if status.startswith(("unavailable", "partial")):   # "off (no key)" is a choice, not a fault
         add("warning", None, f"AI tagger: {status}; rules were used instead")
 
     return problems

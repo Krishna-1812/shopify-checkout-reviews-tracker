@@ -1,15 +1,22 @@
-"""AI tagger using GitHub Models (free tier).
+"""AI tagger for any free, OpenAI-compatible chat API.
 
-Why GitHub Models: inside GitHub Actions the workflow's built-in
-``GITHUB_TOKEN`` can call it once the workflow declares
-``permissions: models: read``. No signup, no API key, no secret to leak or
-rotate. Locally you can use a personal access token with the "models"
-permission in ``GITHUB_MODELS_TOKEN``.
+Providers, tried in this order (the first one with a key set is used):
 
-The free tier is rate limited (roughly 15 requests/minute and ~150/day for
-the small models), so reviews are sent in batches of 15 and each review is
-tagged once and cached in data/reviews.json. Only new or edited reviews are
-sent on a normal day.
+  gemini  Google AI Studio free tier   key: GEMINI_API_KEY  (aistudio.google.com/apikey, no card)
+  groq    GroqCloud free tier          key: GROQ_API_KEY    (console.groq.com/keys, no card)
+
+Set TAGGER_PROVIDER to force one, TAGGER_MODELS to override its model
+preference list. With no key at all the tracker uses the rules tagger.
+
+History: this first used GitHub Models through the workflow's own token, which
+needed no key. GitHub retired that service on 2026-07-30; its endpoint now
+answers HTTP 200 with a plain-text "OK". The first production run caught this
+(every reply failed to parse, rules covered every review, no false alert), and
+it is why a non-JSON reply now marks the provider unavailable at once instead of
+being retried batch after batch.
+
+Free tiers are rate limited (roughly 10-30 requests/minute), so reviews go in
+batches of 15, calls are spaced out, and each review is tagged once and cached.
 """
 from __future__ import annotations
 
@@ -18,6 +25,7 @@ import logging
 import os
 import re
 import time
+from dataclasses import dataclass
 
 import requests
 
@@ -25,21 +33,41 @@ from .taxonomy import SENTIMENT_RULES, SENTIMENTS, THEME_KEYS, THEME_RULES, THEM
 
 log = logging.getLogger(__name__)
 
-ENDPOINT = "https://models.github.ai/inference/chat/completions"
-CATALOG = "https://models.github.ai/catalog/models"
 PROMPT_VERSION = "llm-v1"     # bump to re-tag everything after a prompt change
-DEFAULT_MODELS = "openai/gpt-4.1-mini,openai/gpt-4o-mini,openai/gpt-4.1-nano"
 BATCH_SIZE = 15
 MAX_TEXT_CHARS = 1500
-MIN_SECONDS_BETWEEN_CALLS = 4.5   # stay under ~15 requests/minute
+
+
+@dataclass(frozen=True)
+class Provider:
+    name: str
+    base_url: str              # OpenAI-compatible base, without /chat/completions
+    key_env: str
+    models: str                # comma-separated preference list
+    min_gap_seconds: float     # spacing between calls to stay under the free RPM
+
+
+PROVIDERS: tuple[Provider, ...] = (
+    Provider("gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY",
+             "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash", 7.0),
+    Provider("groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY",
+             "llama-3.3-70b-versatile,openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3-32b", 2.5),
+)
 
 
 class LLMUnavailable(RuntimeError):
-    """The AI tagger cannot be used for the rest of this run (auth, quota)."""
+    """The AI tagger cannot be used for the rest of this run (auth, quota, broken endpoint)."""
 
 
-def _token() -> str | None:
-    return os.environ.get("GITHUB_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
+def pick_provider() -> tuple[Provider | None, str | None]:
+    forced = (os.environ.get("TAGGER_PROVIDER") or "").strip().lower()
+    for p in PROVIDERS:
+        if forced and p.name != forced:
+            continue
+        key = (os.environ.get(p.key_env) or "").strip()
+        if key:
+            return p, key
+    return None, None
 
 
 def system_prompt() -> str:
@@ -75,7 +103,7 @@ def _user_prompt(batch: list[dict], app_names: dict[str, str]) -> str:
 
 
 def _parse_json(content: str) -> dict:
-    content = content.strip()
+    content = (content or "").strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", content, re.S)
     if fenced:
         content = fenced.group(1)
@@ -84,93 +112,105 @@ def _parse_json(content: str) -> dict:
 
 
 class LLMTagger:
-    def __init__(self, token: str | None = None, models: str | None = None):
-        self.token = token or _token()
-        self.preferred = [
-            m.strip() for m in (models or os.environ.get("TAGGER_MODELS") or DEFAULT_MODELS).split(",")
-            if m.strip()
-        ]
+    def __init__(self, provider: Provider | None = None, key: str | None = None, models: str | None = None):
+        if provider is None:
+            provider, key = pick_provider()
+        self.provider = provider
+        self.key = key
+        prefs = models or os.environ.get("TAGGER_MODELS") or (provider.models if provider else "")
+        self.preferred = [m.strip() for m in prefs.split(",") if m.strip()]
         self.model: str | None = None
         self.calls = 0
+        self.use_json_mode = True
         self._last_call = 0.0
         self.session = requests.Session()
-        if self.token:
-            self.session.headers.update({
-                "Authorization": f"Bearer {self.token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-                "Content-Type": "application/json",
-            })
+        if key:
+            self.session.headers.update({"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
 
     @property
     def configured(self) -> bool:
-        return bool(self.token)
+        return bool(self.provider and self.key)
+
+    @property
+    def label(self) -> str | None:
+        return f"{self.provider.name}:{self.model}" if self.provider and self.model else None
 
     def pick_model(self) -> str:
-        """First preferred model that the catalog lists (falls back to the first preference)."""
+        """First preferred model the provider's /models list offers (else the first preference)."""
         if self.model:
             return self.model
         try:
-            resp = self.session.get(CATALOG, timeout=20)
+            resp = self.session.get(f"{self.provider.base_url}/models", timeout=20)
             if resp.status_code == 200:
-                ids = {m.get("id") for m in resp.json()}
-                for m in self.preferred:
-                    if m in ids:
-                        self.model = m
-                        break
+                ids = {str(m.get("id", "")).removeprefix("models/") for m in resp.json().get("data", [])}
+                self.model = next((m for m in self.preferred if m in ids), None)
                 if not self.model:
-                    log.warning("none of %s in catalog; catalog has e.g. %s",
-                                self.preferred, sorted(i for i in ids if i)[:10])
-        except (requests.RequestException, ValueError) as exc:
-            log.warning("could not read model catalog: %s", exc)
+                    log.warning("none of %s offered by %s; it lists e.g. %s",
+                                self.preferred, self.provider.name, sorted(ids)[:12])
+            elif resp.status_code in (401, 403):
+                raise LLMUnavailable(f"{self.provider.name} rejected the key (HTTP {resp.status_code})")
+        except (requests.RequestException, ValueError, AttributeError) as exc:
+            log.warning("could not list %s models: %s", self.provider.name, exc)
         self.model = self.model or self.preferred[0]
         return self.model
 
     def _post(self, payload: dict) -> dict:
+        url = f"{self.provider.base_url}/chat/completions"
         for attempt in range(1, 4):
             gap = time.monotonic() - self._last_call
-            if gap < MIN_SECONDS_BETWEEN_CALLS:
-                time.sleep(MIN_SECONDS_BETWEEN_CALLS - gap)
+            if gap < self.provider.min_gap_seconds:
+                time.sleep(self.provider.min_gap_seconds - gap)
             self._last_call = time.monotonic()
             try:
-                resp = self.session.post(ENDPOINT, json=payload, timeout=90)
+                resp = self.session.post(url, json=payload, timeout=90)
             except requests.RequestException as exc:
-                log.warning("models API network error: %s (attempt %d)", exc, attempt)
+                log.warning("%s network error: %s (attempt %d)", self.provider.name, exc, attempt)
                 time.sleep(5 * attempt)
                 continue
             self.calls += 1
-            if resp.status_code == 200:
-                return resp.json()
             body = resp.text[:300]
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    data["choices"][0]["message"]["content"]
+                    return data
+                except (ValueError, KeyError, IndexError, TypeError):
+                    # e.g. a retired endpoint answering 200 "OK": retrying will not help
+                    raise LLMUnavailable(f"{self.provider.name} returned a non-API reply: {body!r}")
             if resp.status_code in (401, 403):
-                raise LLMUnavailable(f"HTTP {resp.status_code}: {body}")
+                raise LLMUnavailable(f"{self.provider.name} HTTP {resp.status_code}: {body}")
+            if resp.status_code in (404, 410):
+                raise LLMUnavailable(f"{self.provider.name} model/endpoint gone (HTTP {resp.status_code}): {body}")
             if resp.status_code == 429:
-                wait = float(resp.headers.get("retry-after") or 60)
-                if wait > 90:   # daily quota, not a per-minute burst
-                    raise LLMUnavailable(f"rate limited for {wait:.0f}s: {body}")
+                wait = float(resp.headers.get("retry-after") or 30 * attempt)
+                if wait > 120 or "per day" in body.lower() or "daily" in body.lower():
+                    raise LLMUnavailable(f"{self.provider.name} quota used up: {body}")
                 log.warning("rate limited, sleeping %.0fs", wait)
                 time.sleep(wait)
                 continue
-            if resp.status_code in (404, 400) and "model" in body.lower():
-                raise LLMUnavailable(f"model {self.model} unavailable: {body}")
-            log.warning("models API HTTP %s: %s (attempt %d)", resp.status_code, body, attempt)
+            if resp.status_code == 400 and "response_format" in body and payload.get("response_format"):
+                payload = {k: v for k, v in payload.items() if k != "response_format"}
+                self.use_json_mode = False
+                continue
+            log.warning("%s HTTP %s: %s (attempt %d)", self.provider.name, resp.status_code, body, attempt)
             time.sleep(5 * attempt)
-        raise RuntimeError("models API failed 3 times for this batch")
+        raise RuntimeError(f"{self.provider.name} failed 3 times for this batch")
 
     def tag_batch(self, batch: list[dict], app_names: dict[str, str]) -> dict[str, dict]:
         """Return {review_id: tags} for the reviews the model labelled validly."""
         model = self.pick_model()
-        data = self._post({
+        payload = {
             "model": model,
             "temperature": 0,
-            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt()},
                 {"role": "user", "content": _user_prompt(batch, app_names)},
             ],
-        })
-        content = data["choices"][0]["message"]["content"]
-        parsed = _parse_json(content)
+        }
+        if self.use_json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        data = self._post(payload)
+        parsed = _parse_json(data["choices"][0]["message"]["content"])
         wanted = {r["id"] for r in batch}
         out: dict[str, dict] = {}
         for item in parsed.get("results", []):
@@ -182,7 +222,7 @@ class LLMTagger:
                     "sentiment": sentiment,
                     "theme": theme,
                     "tag_source": "llm",
-                    "tag_model": model,
+                    "tag_model": self.label,
                     "tag_reason": str(item.get("reason", ""))[:140],
                 }
         return out

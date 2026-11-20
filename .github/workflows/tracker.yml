@@ -46,7 +46,6 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: write             # commit data/ back to the repo
-      models: read                # GitHub Models (free AI tagging) with the built-in token
       actions: write              # re-enable this workflow so the 60-day inactivity rule can't switch it off
     outputs:
       health: ${{ steps.run.outputs.health }}
@@ -68,7 +67,8 @@ jobs:
       - name: Collect, tag and health-check reviews
         id: run
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # optional free AI tier; without it, rules tag
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}       # optional alternative
           SIMULATE: ${{ inputs.simulate || 'none' }}
         run: python -m tracker.run ${{ inputs.full_crawl && '--full' || '' }}
 

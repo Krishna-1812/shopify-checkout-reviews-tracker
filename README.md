@@ -10,7 +10,7 @@ When everything is fine it stays silent.
 | **Live page** | https://krishna-1812.github.io/shopify-checkout-reviews-tracker/ |
 | **Apps tracked** | [Kwik COD & Checkout](https://apps.shopify.com/kwikcheckout) (GoKwik) · [Razorpay COD & Magic Checkout](https://apps.shopify.com/razorpay-checkout) · [Simpl: 1-Click Checkout](https://apps.shopify.com/simpl-checkout) |
 | **Schedule** | Daily at 03:17 UTC (08:47 IST) on GitHub Actions |
-| **Cost** | ₹0: GitHub Actions, GitHub Pages and GitHub Models free tiers. No paid API, no secrets required |
+| **Cost** | ₹0: GitHub Actions, GitHub Pages, and an optional free AI tier (Google Gemini or Groq). No paid API, no card |
 | **Tagging check** | [eval/REPORT.md](eval/REPORT.md) |
 
 ```
@@ -56,8 +56,9 @@ TAGGER=rules python -m tracker.run         # real scrape, keyword tagging, build
 python -m http.server -d _site 8000        # open http://localhost:8000
 ```
 
-To use AI tagging locally, create a GitHub token with the **Models: read** permission and run
-`GITHUB_MODELS_TOKEN=... python -m tracker.run`. Other commands:
+To use AI tagging locally, get a free key from [Google AI Studio](https://aistudio.google.com/apikey)
+(or [Groq](https://console.groq.com/keys)) and run `GEMINI_API_KEY=... python -m tracker.run`.
+Other commands:
 `python -m tracker.run --full`, `python -m tracker.run --build-only`,
 `python -m tracker.run --simulate empty_result`, `python -m eval.evaluate`.
 
@@ -70,7 +71,7 @@ tracker/
   store.py            load / merge / save; dedupe by Shopify review id; edit detection
   tagging/
     taxonomy.py       the label set: 3 sentiments, 8 themes, with definitions (shared by AI, rules, humans)
-    llm.py            GitHub Models client: batching, JSON validation, rate-limit handling
+    llm.py            client for free OpenAI-compatible APIs (Gemini, Groq): batching, validation, rate limits
     rules.py          keyword + star-rating tagger (fallback and baseline)
     __init__.py       decides what to (re)tag; AI first, rules for anything left
   health.py           the alert rules
@@ -107,11 +108,17 @@ of these apps are about the support team, KYC/onboarding, or whether the checkou
 live once in [`tracker/tagging/taxonomy.py`](tracker/tagging/taxonomy.py). The same text feeds the
 AI prompt, the labelling page and the evaluation.
 
-- **AI:** [GitHub Models](https://docs.github.com/en/github-models) (free tier) with the workflow's
-  built-in token (`permissions: models: read`), so there is no key to create, store or leak. Reviews
-  go in batches of 15 at temperature 0, with a JSON reply format. Any label outside the allowed set
-  is rejected. The model is picked from a preference list checked against the live catalog, so a
-  retired model does not break the run.
+- **AI:** a free, OpenAI-compatible API, whichever has a key in the repo secrets: **Google Gemini**
+  (`GEMINI_API_KEY`, free from AI Studio, no card) first, then **Groq** (`GROQ_API_KEY`).
+  - Reviews go in batches of 15 at temperature 0, with a JSON reply format, and calls are spaced to
+    stay under the free per-minute limits.
+  - Any label outside the allowed set is rejected.
+  - The model is picked from a preference list checked against the provider's live model list, so a
+    retired model does not break the run.
+  - *History:* it first used GitHub Models through the workflow's own token. The first production run
+    showed that GitHub retired that service on 30 July 2026: the endpoint answers `200 OK` in plain
+    text. The run stayed healthy (rules covered every review, the page showed a warning, no false
+    alert). The client now treats any non-API reply as "provider unavailable" after one call.
 - **Rules fallback:** if the AI is unavailable (quota, outage, no token), the keyword and star-rating
   tagger covers the gap. Those reviews are upgraded to AI tags on a later run. A tagging problem
   never fails a run; it shows as a warning on the page.
@@ -154,9 +161,9 @@ number:
 | Run log | `data/runs.json` (last 400 runs) | Anyone |
 | The page | GitHub Pages, built from `data/` on each run | Anyone |
 | Alerts | GitHub issues labelled `tracker-alert` | Anyone can read. Repo watchers (the owner by default) get an email/notification. |
-| `GITHUB_TOKEN` | Created by GitHub for each run, scoped to this repo, expires when the job ends | Nobody. It's never printed or stored. Each job asks only for what it needs: `contents: write` to commit data, `models: read` for AI, `issues: write` for alerts, `pages: write` to deploy. |
+| `GITHUB_TOKEN` | Created by GitHub for each run, scoped to this repo, expires when the job ends | Nobody. It's never printed or stored. Each job asks only for what it needs: `contents: write` to commit data, `issues: write` for alerts, `pages: write` to deploy. |
 | Optional `DISCORD_WEBHOOK_URL`, `HEARTBEAT_URL` | Repository → Settings → Secrets and variables → Actions | Encrypted. Only workflows can read them; GitHub masks them in logs. Repo admins can replace them but not read them. |
-| Local AI token (`GITHUB_MODELS_TOKEN`) | Your shell environment only; `.env` is git-ignored | You |
+| `GEMINI_API_KEY` / `GROQ_API_KEY` (optional AI tagging) | Repository → Settings → Secrets and variables → Actions; locally only in your shell (`.env` is git-ignored) | Encrypted, readable only by the workflow, masked in logs. The page shows the provider and model name, never the key. |
 
 There are **no API keys in the code or the repo**. A fork can't use this repo's secrets, and pull
 requests from forks don't get write permissions.
@@ -172,11 +179,13 @@ In rough order of likelihood:
    day**. Fix: save the new page as a fixture in `tests/fixtures/`, update `scrape.py`, run the tests.
 2. **Shopify starts blocking or rate-limiting GitHub's IP ranges** (403/429, a bot wall). The fetch
    fails after retries, so **the alert fires**. Fix: slow down, or run from a fixed IP (see §5).
-3. **The GitHub Models free tier changes** (quota, model retired, permission renamed). This does
+3. **The free AI tier changes** (quota cut, model retired, key revoked, or a whole service shut down,
+   as happened to GitHub Models in July 2026). This does
    *not* fail the run by design: tags fall back to rules. You'd see it as **"AI tagger: unavailable"**
    in the run-health panel and the job summary, and the rules share would grow in "How every review
-   was tagged". The 30-label evaluation would show the accuracy cost. Fix: update `TAGGER_MODELS` or
-   point `llm.py` at another free provider.
+   was tagged". The 30-label evaluation would show the accuracy cost. Fix: update `TAGGER_MODELS`,
+   add the other provider's key, or add a provider entry in `llm.py` (any OpenAI-compatible API is
+   about four lines).
 4. **The scheduler stops running at all.** GitHub disables cron in public repos after 60 days without
    activity, and scheduled runs can be delayed or dropped when GitHub is busy. **A job that never runs
    can't send its own alert.** Mitigations in place:
@@ -212,8 +221,7 @@ and failure handling.
    Then create `.venv` and `pip install -r requirements.txt`.
 4. **Secrets.** Store them in **AWS SSM Parameter Store** (SecureString). The instance role can
    read only `/tracker/*`. A wrapper exports them at run time; nothing is written to disk.
-   - `GITHUB_MODELS_TOKEN`: a fine-grained token with Models: read, replacing the per-run
-     `GITHUB_TOKEN`.
+   - `GEMINI_API_KEY` (or `GROQ_API_KEY`): the AI tagging key, moved from GitHub secrets.
    - `GH_ALERT_TOKEN`: Issues: write.
    - Optional: the Discord webhook.
 5. **Wrapper script** `/opt/tracker/bin/run-daily.sh` (`set -euo pipefail`):

@@ -1,8 +1,8 @@
 """Decide which reviews need (re)tagging and tag them.
 
 Order of preference for every review that has text:
-  1. AI tag from GitHub Models (tag_source="llm", tag_version=PROMPT_VERSION)
-  2. rules tag (tag_source="rules") when the AI is unavailable or fails
+  1. AI tag from a free OpenAI-compatible API (tag_source="llm", see llm.py)
+  2. rules tag (tag_source="rules") when no AI key is set, or the AI fails
 
 Reviews with no text are tagged from the stars alone (sentiment) and get the
 "general" theme; there is nothing for a model to read.
@@ -75,7 +75,7 @@ def tag_all(store: dict[str, dict], tagger: llm.LLMTagger | None = None) -> TagS
     if queue and not use_llm:
         stats.llm_status = "disabled (TAGGER=rules)"
     elif queue and not tagger.configured:
-        stats.llm_status = "disabled (no token)"
+        stats.llm_status = "off (no AI key set: add GEMINI_API_KEY or GROQ_API_KEY)"
 
     done: set[str] = set()
     if queue and use_llm and tagger.configured:
@@ -99,7 +99,7 @@ def tag_all(store: dict[str, dict], tagger: llm.LLMTagger | None = None) -> TagS
                     done.add(r["id"])
                     stats.llm_tagged += 1
         stats.llm_calls = tagger.calls
-        stats.llm_model = tagger.model
+        stats.llm_model = tagger.label
 
     # 3. anything still untagged gets a rules tag, so the page never has gaps
     for r in queue:

@@ -499,7 +499,7 @@
     table(tw, ["App", "Listed on Shopify", "Parsed this run", "New", "Stored", "Crawl"], rows);
     parts.push(tw);
     parts.push(el("p", { class: "sub" }, "How every stored review was tagged: " +
-      Object.entries(mix).map(([k, v]) => `${v} ${k === "llm" ? "by AI" : k === "rules" ? "by rules (AI unavailable)" : k === "stars" ? "from stars (no text)" : k}`).join(", ") + "."));
+      Object.entries(mix).map(([k, v]) => `${v} ${k === "llm" ? "by AI" : k === "rules" ? "by keyword rules" : k === "stars" ? "from stars (no text)" : k}`).join(", ") + "."));
     box.replaceChildren(...parts);
   }
 

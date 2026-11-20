@@ -36,7 +36,7 @@ def test_parse_json_handles_code_fences():
 
 
 def test_tag_batch_drops_invalid_labels(monkeypatch):
-    t = llm.LLMTagger(token="x", models="m")
+    t = llm.LLMTagger(provider=llm.PROVIDERS[0], key="x", models="m")
     t.model = "m"
     content = ('{"results": [{"id": "1", "sentiment": "Positive", "theme": "support", "reason": "thanks agent"},'
                '{"id": "2", "sentiment": "angry", "theme": "support"},'
@@ -61,6 +61,7 @@ class FakeTagger:
 
     def __init__(self, fail=None):
         self.fail, self.calls, self.model, self.seen = fail, 0, "fake-model", []
+        self.label = "fake:fake-model"
 
     def tag_batch(self, batch, app_names):
         self.calls += 1
@@ -113,3 +114,66 @@ def test_tagger_rules_env_never_calls_ai(monkeypatch):
     store = {"1": rv("1", "support slow", 1)}
     s = tagging.tag_all(store, FakeTagger())
     assert store["1"]["tag_source"] == "rules" and s.llm_calls == 0
+
+
+# --- provider selection and broken endpoints -------------------------------------
+def test_provider_picked_from_whichever_key_is_set(monkeypatch):
+    for p in llm.PROVIDERS:
+        monkeypatch.delenv(p.key_env, raising=False)
+    monkeypatch.delenv("TAGGER_PROVIDER", raising=False)
+    assert llm.pick_provider() == (None, None)
+    monkeypatch.setenv("GROQ_API_KEY", "g")
+    assert llm.pick_provider()[0].name == "groq"
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    assert llm.pick_provider()[0].name == "gemini"          # first in order wins
+    monkeypatch.setenv("TAGGER_PROVIDER", "groq")
+    assert llm.pick_provider()[0].name == "groq"            # unless forced
+
+
+class FakeResp:
+    def __init__(self, status, text, headers=None):
+        self.status_code, self.text, self.headers = status, text, headers or {}
+
+    def json(self):
+        import json as _j
+        return _j.loads(self.text)
+
+
+def test_non_api_reply_marks_provider_unavailable_at_once(monkeypatch):
+    """The retired GitHub Models endpoint answered 200 'OK' to everything."""
+    t = llm.LLMTagger(provider=llm.Provider("x", "https://x", "X_KEY", "m", 0), key="k")
+    t.model = "m"
+    monkeypatch.setattr(t.session, "post", lambda *a, **kw: FakeResp(200, "OK"))
+    with pytest.raises(llm.LLMUnavailable):
+        t.tag_batch([rv("1", "a")], {})
+    assert t.calls == 1
+
+
+def test_bad_key_and_gone_model_are_unavailable(monkeypatch):
+    t = llm.LLMTagger(provider=llm.Provider("x", "https://x", "X_KEY", "m", 0), key="k")
+    t.model = "m"
+    for status in (401, 403, 404, 410):
+        monkeypatch.setattr(t.session, "post", lambda *a, s=status, **kw: FakeResp(s, "nope"))
+        with pytest.raises(llm.LLMUnavailable):
+            t.tag_batch([rv("1", "a")], {})
+
+
+def test_json_mode_dropped_if_provider_rejects_it(monkeypatch):
+    t = llm.LLMTagger(provider=llm.Provider("x", "https://x", "X_KEY", "m", 0), key="k")
+    t.model = "m"
+    sent = []
+    ok = '{"choices": [{"message": {"content": "{\\"results\\": [{\\"id\\": \\"1\\", \\"sentiment\\": \\"positive\\", \\"theme\\": \\"general\\"}]}"}}]}'
+
+    def post(url, json, timeout):
+        sent.append("response_format" in json)
+        return FakeResp(400, "response_format not supported") if len(sent) == 1 else FakeResp(200, ok)
+    monkeypatch.setattr(t.session, "post", post)
+    out = t.tag_batch([rv("1", "a")], {})
+    assert sent == [True, False] and out["1"]["sentiment"] == "positive"
+    assert out["1"]["tag_model"] == "x:m"
+
+
+def test_missing_key_is_not_a_health_warning():
+    from tracker import health
+    r = {"apps": {}, "tagging": {"llm_status": "off (no AI key set: add GEMINI_API_KEY or GROQ_API_KEY)"}}
+    assert health.evaluate(r) == []

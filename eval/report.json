@@ -1,0 +1,287 @@
+{
+ "labelled_on": "2026-11-21",
+ "labels_fingerprint": "5b55594a1d5d8f84",
+ "n": 30,
+ "tracker_sources": "30 AI",
+ "tracker": {
+  "sentiment": {
+   "agree": 30,
+   "n": 30,
+   "pct": 100.0
+  },
+  "theme": {
+   "agree": 26,
+   "n": 30,
+   "pct": 86.7
+  },
+  "both": {
+   "agree": 26,
+   "n": 30,
+   "pct": 86.7
+  }
+ },
+ "rules_baseline": {
+  "sentiment": {
+   "agree": 30,
+   "n": 30,
+   "pct": 100.0
+  },
+  "theme": {
+   "agree": 23,
+   "n": 30,
+   "pct": 76.7
+  },
+  "both": {
+   "agree": 23,
+   "n": 30,
+   "pct": 76.7
+  }
+ },
+ "sentiment_confusion": {
+  "positive": {
+   "positive": 16,
+   "neutral": 0,
+   "negative": 0
+  },
+  "neutral": {
+   "positive": 0,
+   "neutral": 0,
+   "negative": 0
+  },
+  "negative": {
+   "positive": 0,
+   "neutral": 0,
+   "negative": 14
+  }
+ },
+ "theme_confusion": {
+  "support": {
+   "support": 8,
+   "setup": 0,
+   "reliability": 0,
+   "conversion": 0,
+   "cod_rto": 0,
+   "pricing": 0,
+   "features": 0,
+   "general": 0
+  },
+  "setup": {
+   "support": 0,
+   "setup": 6,
+   "reliability": 0,
+   "conversion": 0,
+   "cod_rto": 0,
+   "pricing": 0,
+   "features": 0,
+   "general": 0
+  },
+  "reliability": {
+   "support": 0,
+   "setup": 0,
+   "reliability": 4,
+   "conversion": 0,
+   "cod_rto": 0,
+   "pricing": 0,
+   "features": 0,
+   "general": 0
+  },
+  "conversion": {
+   "support": 0,
+   "setup": 0,
+   "reliability": 0,
+   "conversion": 2,
+   "cod_rto": 1,
+   "pricing": 0,
+   "features": 0,
+   "general": 0
+  },
+  "cod_rto": {
+   "support": 0,
+   "setup": 0,
+   "reliability": 0,
+   "conversion": 0,
+   "cod_rto": 0,
+   "pricing": 0,
+   "features": 0,
+   "general": 0
+  },
+  "pricing": {
+   "support": 0,
+   "setup": 0,
+   "reliability": 0,
+   "conversion": 0,
+   "cod_rto": 0,
+   "pricing": 0,
+   "features": 0,
+   "general": 0
+  },
+  "features": {
+   "support": 0,
+   "setup": 0,
+   "reliability": 0,
+   "conversion": 0,
+   "cod_rto": 0,
+   "pricing": 0,
+   "features": 1,
+   "general": 0
+  },
+  "general": {
+   "support": 1,
+   "setup": 1,
+   "reliability": 0,
+   "conversion": 0,
+   "cod_rto": 0,
+   "pricing": 0,
+   "features": 1,
+   "general": 5
+  }
+ },
+ "highlight": [
+  {
+   "id": "1755203",
+   "app": "razorpay-checkout",
+   "rating": 4,
+   "text": "It's a flawless Payment checkout integration which works perfectly with the store, It filters the customer using OTP which helps drastically in reducing the fake orders, especially in india and has many more useful features. Great Work RazorPay Team.",
+   "url": "https://apps.shopify.com/reviews/1755203",
+   "note": "",
+   "human": {
+    "sentiment": "positive",
+    "theme": "conversion"
+   },
+   "tracker": {
+    "sentiment": "positive",
+    "theme": "cod_rto",
+    "source": "llm",
+    "model": "gemini:gemini-3.5-flash-lite",
+    "reason": "Filters customers using OTP to reduce fake orders."
+   },
+   "rules": {
+    "sentiment": "positive",
+    "theme": "cod_rto"
+   },
+   "explanation": "Got the theme COD & RTO instead of Checkout & conversion (AI tag). Its reason: “Filters customers using OTP to reduce fake orders”."
+  },
+  {
+   "id": "2071694",
+   "app": "kwikcheckout",
+   "rating": 5,
+   "text": "A great experience overall with a helpful team and quick and easy process. Thought improvement room is there, None the less a good system for checkout and login!",
+   "url": "https://apps.shopify.com/reviews/2071694",
+   "note": "",
+   "human": {
+    "sentiment": "positive",
+    "theme": "general"
+   },
+   "tracker": {
+    "sentiment": "positive",
+    "theme": "setup",
+    "source": "llm",
+    "model": "gemini:gemini-3.5-flash-lite",
+    "reason": "Mentions helpful team and quick and easy process."
+   },
+   "rules": {
+    "sentiment": "positive",
+    "theme": "support"
+   },
+   "explanation": "Got the theme Setup & onboarding instead of General (AI tag). Its reason: “Mentions helpful team and quick and easy process”."
+  }
+ ],
+ "misses": [
+  {
+   "id": "2071694",
+   "app": "kwikcheckout",
+   "rating": 5,
+   "text": "A great experience overall with a helpful team and quick and easy process. Thought improvement room is there, None the less a good system for checkout and login!",
+   "url": "https://apps.shopify.com/reviews/2071694",
+   "note": "",
+   "human": {
+    "sentiment": "positive",
+    "theme": "general"
+   },
+   "tracker": {
+    "sentiment": "positive",
+    "theme": "setup",
+    "source": "llm",
+    "model": "gemini:gemini-3.5-flash-lite",
+    "reason": "Mentions helpful team and quick and easy process."
+   },
+   "rules": {
+    "sentiment": "positive",
+    "theme": "support"
+   },
+   "explanation": "Got the theme Setup & onboarding instead of General (AI tag). Its reason: “Mentions helpful team and quick and easy process”."
+  },
+  {
+   "id": "1755203",
+   "app": "razorpay-checkout",
+   "rating": 4,
+   "text": "It's a flawless Payment checkout integration which works perfectly with the store, It filters the customer using OTP which helps drastically in reducing the fake orders, especially in india and has many more useful features. Great Work RazorPay Team.",
+   "url": "https://apps.shopify.com/reviews/1755203",
+   "note": "",
+   "human": {
+    "sentiment": "positive",
+    "theme": "conversion"
+   },
+   "tracker": {
+    "sentiment": "positive",
+    "theme": "cod_rto",
+    "source": "llm",
+    "model": "gemini:gemini-3.5-flash-lite",
+    "reason": "Filters customers using OTP to reduce fake orders."
+   },
+   "rules": {
+    "sentiment": "positive",
+    "theme": "cod_rto"
+   },
+   "explanation": "Got the theme COD & RTO instead of Checkout & conversion (AI tag). Its reason: “Filters customers using OTP to reduce fake orders”."
+  },
+  {
+   "id": "1694184",
+   "app": "kwikcheckout",
+   "rating": 5,
+   "text": "It is a nice App with great payment integration, and Deepak was very cooperative.",
+   "url": "https://apps.shopify.com/reviews/1694184",
+   "note": "",
+   "human": {
+    "sentiment": "positive",
+    "theme": "general"
+   },
+   "tracker": {
+    "sentiment": "positive",
+    "theme": "features",
+    "source": "llm",
+    "model": "gemini:gemini-3.5-flash-lite",
+    "reason": "Nice app with great payment integration and cooperative support."
+   },
+   "rules": {
+    "sentiment": "positive",
+    "theme": "setup"
+   },
+   "explanation": "Got the theme Features instead of General (AI tag). Its reason: “Nice app with great payment integration and cooperative support”."
+  },
+  {
+   "id": "1632139",
+   "app": "razorpay-checkout",
+   "rating": 5,
+   "text": "great service and experience.. we are using from past 2 month ...",
+   "url": "https://apps.shopify.com/reviews/1632139",
+   "note": "",
+   "human": {
+    "sentiment": "positive",
+    "theme": "general"
+   },
+   "tracker": {
+    "sentiment": "positive",
+    "theme": "support",
+    "source": "llm",
+    "model": "gemini:gemini-3.5-flash-lite",
+    "reason": "Praise for great service and experience over two months."
+   },
+   "rules": {
+    "sentiment": "positive",
+    "theme": "general"
+   },
+   "explanation": "Got the theme Support instead of General (AI tag). Its reason: “Praise for great service and experience over two months”."
+  }
+ ]
+}

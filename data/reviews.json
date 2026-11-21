@@ -5650,6 +5650,27 @@
   "tag_reason": "no text; from stars"
  },
  {
+  "id": "1778972",
+  "app": "kwikcheckout",
+  "url": "https://apps.shopify.com/reviews/1778972",
+  "rating": 5,
+  "date": "2025-06-26",
+  "store": "Athliq | Premium Athleisure Wear for Men & Women in India",
+  "country": "India",
+  "usage": "",
+  "text": "",
+  "has_reply": false,
+  "content_hash": "c9cbc6e9cca4defb",
+  "first_seen": "2026-11-21",
+  "last_seen": "2026-11-21",
+  "sentiment": "positive",
+  "theme": "general",
+  "tag_source": "stars",
+  "tag_model": "no-text-v1",
+  "tag_version": "no-text-v1",
+  "tag_reason": "no text; from stars"
+ },
+ {
   "id": "1779673",
   "app": "razorpay-checkout",
   "url": "https://apps.shopify.com/reviews/1779673",

@@ -84,6 +84,7 @@ def app_summary(app: config.App, reviews: list[dict], last_run_app: dict | None,
         "store_url": f"{config.BASE_URL}/{app.slug}",
         "reviews_url": f"{config.BASE_URL}/{app.slug}/reviews?sort_by=newest",
         "stored_total": len(mine),
+        "removed_total": sum(1 for r in mine if r.get("removed_on")),   # deleted on Shopify since we stored them
         "listed_total": (last_run_app or {}).get("declared_total"),
         "listed_rating": (last_run_app or {}).get("overall_rating"),
         "avg_rating": round(sum(r["rating"] for r in mine) / len(mine), 2) if mine else None,
@@ -104,7 +105,7 @@ def latest_reviews(reviews: list[dict], n: int = LATEST_N) -> list[dict]:
         out.extend(mine[:n])
     out.sort(key=lambda r: (r["date"], int(r["id"])), reverse=True)
     keep = ("id", "app", "url", "date", "rating", "store", "country", "text",
-            "sentiment", "theme", "tag_source", "tag_reason")
+            "sentiment", "theme", "tag_source", "tag_reason", "removed_on")
     return [{k: r.get(k) for k in keep} for r in out]
 
 

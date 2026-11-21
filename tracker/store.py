@@ -70,6 +70,7 @@ def merge(store: dict[str, dict], scraped: list[dict], today: str) -> MergeStats
             stats.new += 1
             continue
         existing["last_seen"] = today
+        existing.pop("removed_on", None)    # it is listed again
         if existing.get("content_hash") != item["content_hash"]:
             for k in SCRAPED_FIELDS:
                 existing[k] = item.get(k)
@@ -83,6 +84,25 @@ def merge(store: dict[str, dict], scraped: list[dict], today: str) -> MergeStats
             existing["usage"] = item.get("usage") or existing.get("usage")
             stats.unchanged += 1
     return stats
+
+
+def mark_removed(store: dict[str, dict], app: str, seen_ids: set[str], today: str) -> int:
+    """After a complete crawl of every page of ``app``: stamp ``removed_on`` on
+    stored reviews that Shopify no longer lists (the merchant or Shopify deleted
+    them). They stay in the history, since they were real reviews posted on
+    their date; the page says how many were removed and stops linking to them.
+    Returns how many were newly marked."""
+    marked = 0
+    for rid, r in store.items():
+        if r["app"] == app and rid not in seen_ids and not r.get("removed_on"):
+            r["removed_on"] = today
+            marked += 1
+    return marked
+
+
+def active_count(store: dict[str, dict], app: str) -> int:
+    """Reviews of ``app`` that Shopify still lists."""
+    return sum(1 for r in store.values() if r["app"] == app and not r.get("removed_on"))
 
 
 def load_runs(path: Path = config.RUNS_FILE) -> list[dict]:

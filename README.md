@@ -7,7 +7,7 @@ When everything is fine it stays silent.
 
 | | |
 |---|---|
-| **Live page** | https://krishna-1812.github.io/shopify-checkout-reviews-tracker/: reviews per week, sentiment by week and theme mix for each app, the 20 latest reviews with links, tagging accuracy and run health |
+| **Live page** | [krishna-1812.github.io/shopify-checkout-reviews-tracker](https://krishna-1812.github.io/shopify-checkout-reviews-tracker/): reviews per week, sentiment by week and theme mix for each app, the 20 latest reviews with links, tagging accuracy and run health |
 | **Apps tracked** | [Kwik COD & Checkout](https://apps.shopify.com/kwikcheckout) (GoKwik) · [Razorpay COD & Magic Checkout](https://apps.shopify.com/razorpay-checkout) · [Simpl: 1-Click Checkout](https://apps.shopify.com/simpl-checkout) |
 | **Schedule** | Every day at 03:17 and 15:17 UTC (08:47 and 20:47 IST) on GitHub Actions. GitHub can start scheduled runs hours late or skip one, so the second slot keeps a run on every day |
 | **Cost** | ₹0: GitHub Actions, GitHub Pages, and an optional free AI tier (Google Gemini or Groq). No paid API, no card |
@@ -25,7 +25,7 @@ Shopify App Store ──► scrape ──► merge (dedupe by review id) ──�
 
 ## What the data says (20 Nov 2026)
 
-438 reviews: Kwik 398, Razorpay 40, Simpl 0. 305 have text, all AI-tagged; 133 are rating-only.
+438 reviews: Kwik 398 (one has since been deleted from the App Store), Razorpay 40, Simpl 0. 305 have text, all AI-tagged; 133 are rating-only.
 
 - **Kwik COD & Checkout** is rated 4.6★, but sentiment is sliding.
   - Negative share by year: **3% in 2024, 6% in 2025, 19% in 2026**, while volume fell from
@@ -67,8 +67,8 @@ workflow if GitHub switched it off.
 
 A normal day reads one page per app (10 newest reviews). The crawler stops at the first page whose
 reviews are all already stored. It walks every page only on the first run, when asked (`full_crawl`),
-or by itself when it holds fewer reviews than Shopify lists. That last case is self-healing for
-missed days.
+or by itself when the number it holds differs from what Shopify lists: fewer means it missed some
+(self-healing), more means some were deleted on Shopify (see §2).
 
 **Run options** (Run workflow form): `simulate = empty_result` pretends the parser found nothing.
 `simulate = crash` makes the run fail. Both exist to prove the alert works. `full_crawl` re-reads
@@ -79,7 +79,7 @@ every page.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest -q                        # 73 tests, ~1 s, no network
+python -m pytest -q                        # 77 tests, ~1 s, no network
 TAGGER=rules python -m tracker.run         # real scrape, keyword tagging, builds _site/
 python -m http.server -d _site 8000        # open http://localhost:8000
 ```
@@ -109,7 +109,7 @@ tracker/
 site/                 the page: index.html, app.js (Chart.js), style.css, label.html (blind labelling)
 eval/                 sample.py (picks the 30), evaluate.py (scores), hand_labels.csv, REPORT.md
 data/                 reviews.json (history), runs.json (run log): written by the bot
-tests/                parser, merge, health, watchdog, aggregation, tagging, evaluation (+ saved App Store pages)
+tests/                parser, merge, removals, self-healing crawl, health, watchdog, aggregation, tagging, evaluation (+ saved App Store pages)
 .github/workflows/    tracker.yml (the daily run), watchdog.yml (dead-man's switch), ci.yml (tests on PRs)
 ```
 
@@ -128,7 +128,11 @@ crawl makes about 47.
 **History and dedupe.** `data/reviews.json` holds one record per review id, with `first_seen` and
 `last_seen`. Seeing the same review again only moves `last_seen`, so a review seen on many days is
 stored and counted once. If a merchant edits a review, the new text replaces the old one, the
-review is counted once, and its tags are cleared so it gets re-tagged. Charts use the review's own
+review is counted once, and its tags are cleared so it gets re-tagged. If a review disappears from
+Shopify (the merchant or Shopify deleted it), the count Shopify shows drops below what we hold, so the
+next run re-reads every page, finds which one is gone and stamps it `removed_on`. It stays in the
+history (it was a real review posted on its date), the page says how many were removed, and it no
+longer links to the dead page. This happened on 21 Nov 2026 with one Kwik review. Charts use the review's own
 posted date, not the day we first saw it, so a backfill puts reviews in their real weeks.
 
 **Tagging.** Every review gets a sentiment (positive / neutral / negative) and **one** main theme.
@@ -196,6 +200,7 @@ number:
 | Tests fail, the run crashes or hangs past its timeout, the data push or the Pages deploy fails | **alert** (the job fails or is cancelled) |
 | No run at all for 36 h (workflow disabled, workflow file broken, scheduled runs dropped) | **alert** from the watchdog |
 | No new reviews today; Simpl lists 0 and we parsed 0 | silent: healthy |
+| A stored review was deleted on Shopify | silent: marked `removed_on`, kept in history, noted on the page |
 | AI tagger unavailable, rules used | silent: warning on the page only |
 
 ---

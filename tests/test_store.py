@@ -62,3 +62,17 @@ def test_run_log_is_capped(tmp_path, monkeypatch):
     for i in range(5):
         store.append_run({"run_id": i}, path)
     assert [r["run_id"] for r in store.load_runs(path)] == [2, 3, 4]
+
+
+def test_review_deleted_on_shopify_is_marked_not_dropped():
+    st = {}
+    store.merge(st, [review("1"), review("2", text="ok")], "2026-11-01")
+    # a later full crawl lists only review 1
+    assert store.mark_removed(st, "kwikcheckout", {"1"}, "2026-11-21") == 1
+    assert st["2"]["removed_on"] == "2026-11-21" and "removed_on" not in st["1"]
+    assert len(st) == 2                                    # still in the history
+    assert store.active_count(st, "kwikcheckout") == 1
+    assert store.mark_removed(st, "kwikcheckout", {"1"}, "2026-11-22") == 0   # not re-stamped
+    # if Shopify lists it again, the mark goes away
+    store.merge(st, [review("2", text="ok")], "2026-11-23")
+    assert "removed_on" not in st["2"] and store.active_count(st, "kwikcheckout") == 2

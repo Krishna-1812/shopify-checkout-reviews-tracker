@@ -296,7 +296,9 @@
         el("div", { class: "spark-wrap" },
           el("div", { class: "k" }, el("span", null, "Reviews per week"), el("span", null, `since ${fmtDate(firstWeek, { month: "short", year: "numeric" })}`)),
           sparkline(d.series[a.slug].total.slice(d.weeks.indexOf(firstWeek)), c, `sp-${idx}`)),
-        el("div", { class: "card-foot" }, `Newest review ${fmtDate(a.latest_date)} · `, el("a", { href: a.reviews_url }, "all reviews ↗")));
+        el("div", { class: "card-foot" }, `Newest review ${fmtDate(a.latest_date)} · `, el("a", { href: a.reviews_url }, "all reviews ↗"),
+          a.removed_total ? el("div", { class: "removed-note" },
+            `${a.removed_total} tracked review${a.removed_total === 1 ? " has" : "s have"} since been removed from the App Store; kept in the history.`) : null));
       return card;
     }));
   }
@@ -613,7 +615,9 @@
           el("span", { class: "chip", title: r.tag_reason || null }, el("i", { class: "key-rect", style: `background:${sentColor[r.sentiment] || css("--baseline")}` }), SENT_LABEL[r.sentiment] || "Untagged"),
           el("span", { class: "chip" }, (d.themes[r.theme] || {}).label || "Untagged"),
           el("span", { class: "chip chip-src" }, r.tag_source === "llm" ? "AI tag" : r.tag_source === "rules" ? "rules tag" : "from stars")),
-        el("a", { class: "open", href: r.url, target: "_blank", rel: "noopener" }, "View on Shopify ↗")));
+        r.removed_on
+          ? el("span", { class: "open removed", title: "The merchant or Shopify deleted it; the tracker keeps it in the history." }, `Removed from Shopify ${fmtDate(r.removed_on)}`)
+          : el("a", { class: "open", href: r.url, target: "_blank", rel: "noopener" }, "View on Shopify ↗")));
       return item;
     }));
   }

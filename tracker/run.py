@@ -54,13 +54,15 @@ def scrape_all(reviews: dict, today: str, force_full: bool, simulate: str) -> di
         crawl = scrape.crawl_app(session, app.slug, known, full=full,
                                  simulate_empty=simulate == "empty_result")
         merged = store.merge(reviews, crawl.reviews, today)
-        stored = sum(1 for r in reviews.values() if r["app"] == app.slug)
+        active = store.active_count(reviews, app.slug)
 
-        # Self-healing: if we hold fewer reviews than Shopify lists, walk every page once.
-        if (not full and not crawl.error and crawl.declared_total
-                and stored < crawl.declared_total and simulate == "none"):
-            log.info("%s: stored %d < listed %d, running a full crawl",
-                     app.slug, stored, crawl.declared_total)
+        # Self-healing: if what we hold (minus reviews already known to be removed)
+        # differs from what Shopify lists, walk every page once. Fewer = we missed
+        # some; more = some were deleted on Shopify, and the full list tells which.
+        if (not full and not crawl.error and crawl.declared_total is not None
+                and active != crawl.declared_total and simulate == "none"):
+            log.info("%s: hold %d listed reviews, Shopify lists %d: running a full crawl",
+                     app.slug, active, crawl.declared_total)
             full_crawl = scrape.crawl_app(session, app.slug, known, full=True)
             more = store.merge(reviews, full_crawl.reviews, today)
             merged.new += more.new
@@ -68,7 +70,17 @@ def scrape_all(reviews: dict, today: str, force_full: bool, simulate: str) -> di
             full_crawl.reviews = crawl.reviews + full_crawl.reviews
             full_crawl.pages_fetched += crawl.pages_fetched
             crawl = full_crawl
-            stored = sum(1 for r in reviews.values() if r["app"] == app.slug)
+
+        # A complete full crawl (no error, and it saw exactly as many reviews as
+        # Shopify lists) shows which stored reviews are gone from the App Store.
+        seen = {r["id"] for r in crawl.reviews}
+        removed = 0
+        if (crawl.mode == "full" and not crawl.error and simulate == "none"
+                and crawl.declared_total is not None and len(seen) == crawl.declared_total):
+            removed = store.mark_removed(reviews, app.slug, seen, today)
+            if removed:
+                log.info("%s: %d stored review(s) no longer listed on Shopify, marked removed", app.slug, removed)
+        stored = sum(1 for r in reviews.values() if r["app"] == app.slug)
 
         apps_report[app.slug] = {
             "mode": crawl.mode,
@@ -82,6 +94,8 @@ def scrape_all(reviews: dict, today: str, force_full: bool, simulate: str) -> di
             "new": merged.new,
             "edited": merged.edited,
             "stored_total": stored,
+            "removed": removed,
+            "removed_total": stored - store.active_count(reviews, app.slug),
             "error": crawl.error,
         }
         log.info("%s: %s", app.slug, apps_report[app.slug])

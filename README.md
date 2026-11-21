@@ -11,7 +11,7 @@ When everything is fine it stays silent.
 | **Apps tracked** | [Kwik COD & Checkout](https://apps.shopify.com/kwikcheckout) (GoKwik) · [Razorpay COD & Magic Checkout](https://apps.shopify.com/razorpay-checkout) · [Simpl: 1-Click Checkout](https://apps.shopify.com/simpl-checkout) |
 | **Schedule** | Every day at 03:17 and 15:17 UTC (08:47 and 20:47 IST) on GitHub Actions. GitHub can start scheduled runs hours late or skip one, so the second slot keeps a run on every day |
 | **Cost** | ₹0: GitHub Actions, GitHub Pages, and an optional free AI tier (Google Gemini or Groq). No paid API, no card |
-| **Tagging check** | 30 reviews labelled blind on the [labelling page](https://krishna-1812.github.io/shopify-checkout-reviews-tracker/label.html). Once `eval/hand_labels.csv` is committed, every run scores the tracker against it, shows the result on the page and writes `eval/REPORT.md` |
+| **Tagging check** | I labelled 30 reviews blind on the [labelling page](https://krishna-1812.github.io/shopify-checkout-reviews-tracker/label.html). The tracker agrees with me on **sentiment 30/30 (100%)** and **theme 26/30 (87%)**; keyword rules alone get the theme right 23/30 (77%). The two wrong cases are on the page; every disagreement is in [eval/REPORT.md](eval/REPORT.md) |
 | **Alert proof** | [Issue #1](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/1): simulated "parser found nothing" run, opened by the workflow and closed by the next healthy run. [Issue #2](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/2): a **real** failure the alert caught on day one (see §4). [Issue #3](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/3): test of the watchdog ("no run for 36 h") alert |
 
 ```
@@ -171,8 +171,14 @@ labelled by hand on [`label.html`](https://krishna-1812.github.io/shopify-checko
 which hides the tracker's tags so the human isn't anchored, and uses the same definitions and
 tie-breakers the AI is given. [`eval/evaluate.py`](eval/evaluate.py)
 compares them with the stored tags on every run (so the score follows any re-tagging). It also
-scores the rules tagger alone as a baseline, so you can see what the AI adds. The agreement and two
-highlighted misses appear on the page and in `eval/REPORT.md` once `eval/hand_labels.csv` is committed.
+scores the rules tagger alone as a baseline, so you can see what the AI adds.
+
+Result (labelled 21 Nov 2026): sentiment **30/30**, theme **26/30**. All four misses are theme
+calls on positive reviews, and they show a pattern. When a review praises the app in general but
+mentions one detail (OTP filtering, "quick process", a named agent), the AI makes that detail the
+theme, whereas I read the review as general praise or about the checkout as a whole. The fix would
+be a tie-breaker in the theme rules ("a passing mention is not the main topic"), then re-scoring. The
+two highlighted misses are on the page; every disagreement is in [eval/REPORT.md](eval/REPORT.md).
 
 **The alert, and why "0 new reviews" is not the signal.** On a normal day there may be no new
 reviews (Razorpay gets a few a month), and Simpl has **no reviews at all**. So "collected 0" can't be

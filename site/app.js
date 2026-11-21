@@ -779,7 +779,6 @@
     renderLatest();
     renderEval();
     renderHealth();
-    $("#generated").textContent = `Page built ${new Date(state.data.generated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} from ${nf.format(state.data.apps.reduce((s, a) => s + a.stored_total, 0))} stored reviews.`;
     observeReveals();
   }
 

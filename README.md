@@ -175,7 +175,7 @@ scores the rules tagger alone as a baseline, so you can see what the AI adds.
 
 Result (labelled 21 Nov 2026): sentiment **30/30**, theme **26/30**. All four misses are theme
 calls on positive reviews, and they show a pattern. When a review praises the app in general but
-mentions one detail (OTP filtering, "quick process", a named agent), the AI makes that detail the
+mentions one detail (OTP filtering, a "quick process", "great service"), the AI makes that detail the
 theme, whereas I read the review as general praise or about the checkout as a whole. The fix would
 be a tie-breaker in the theme rules ("a passing mention is not the main topic"), then re-scoring. The
 two highlighted misses are on the page; every disagreement is in [eval/REPORT.md](eval/REPORT.md).

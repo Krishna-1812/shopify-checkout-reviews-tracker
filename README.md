@@ -9,7 +9,7 @@ When everything is fine it stays silent.
 |---|---|
 | **Live page** | https://krishna-1812.github.io/shopify-checkout-reviews-tracker/: reviews per week, sentiment by week and theme mix for each app, the 20 latest reviews with links, tagging accuracy and run health |
 | **Apps tracked** | [Kwik COD & Checkout](https://apps.shopify.com/kwikcheckout) (GoKwik) · [Razorpay COD & Magic Checkout](https://apps.shopify.com/razorpay-checkout) · [Simpl: 1-Click Checkout](https://apps.shopify.com/simpl-checkout) |
-| **Schedule** | Daily at 03:17 UTC (08:47 IST) on GitHub Actions |
+| **Schedule** | Every day at 03:17 and 15:17 UTC (08:47 and 20:47 IST) on GitHub Actions. GitHub can start scheduled runs hours late or skip one, so the second slot keeps a run on every day |
 | **Cost** | ₹0: GitHub Actions, GitHub Pages, and an optional free AI tier (Google Gemini or Groq). No paid API, no card |
 | **Tagging check** | 30 reviews labelled blind on the [labelling page](https://krishna-1812.github.io/shopify-checkout-reviews-tracker/label.html). Once `eval/hand_labels.csv` is committed, every run scores the tracker against it, shows the result on the page and writes `eval/REPORT.md` |
 | **Alert proof** | [Issue #1](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/1): simulated "parser found nothing" run, opened by the workflow and closed by the next healthy run. [Issue #2](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/2): a **real** failure the alert caught on day one (see §4). [Issue #3](https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/issues/3): test of the watchdog ("no run for 36 h") alert |
@@ -46,7 +46,10 @@ Shopify App Store ──► scrape ──► merge (dedupe by review id) ──�
 
 ### Automatically
 
-[`.github/workflows/tracker.yml`](.github/workflows/tracker.yml) runs every day at **03:17 UTC**. It also
+[`.github/workflows/tracker.yml`](.github/workflows/tracker.yml) runs every day at **03:17 and 15:17 UTC**.
+GitHub's scheduler can start a run several hours late, or skip one when it is busy (the first scheduled
+run here started 8.5 hours late), so two slots 12 hours apart keep "runs daily" true even then. A second
+run on the same day costs one page request per app and changes nothing if no review is new. It also
 runs when code under `tracker/`, `site/` or `eval/` changes on `main`, and on demand from
 **Actions → Daily reviews tracker → Run workflow**. Four jobs:
 
@@ -286,7 +289,8 @@ and failure handling.
    7. If the run printed `health=alert`, call `gh issue create` (same body as `alert.md`) and exit
       non-zero.
 6. **Schedule.** Use a **systemd timer**, not cron: `tracker.service` runs the wrapper as `tracker`,
-   and `tracker.timer` has `OnCalendar=*-*-* 03:17:00 UTC` and `Persistent=true`, so a run missed
+   and `tracker.timer` has `OnCalendar=*-*-* 03:17:00 UTC` and `Persistent=true` (one slot is enough:
+   a systemd timer fires on time, unlike GitHub's shared scheduler), so a run missed
    during a reboot happens on boot. Logs go to journald (`journalctl -u tracker`).
 7. **Alerting on crashes.** Add `OnFailure=tracker-alert.service` to the service. That unit opens the
    GitHub issue or posts the webhook, so a crash, a test failure or a failed push alerts just like

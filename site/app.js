@@ -15,7 +15,7 @@
   const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const SENTS = ["positive", "neutral", "negative"];
   const SENT_LABEL = { positive: "Positive", neutral: "Neutral", negative: "Negative" };
-  const NEXT_RUN_UTC = { h: 3, m: 17 };   // matches the cron in .github/workflows/tracker.yml
+  const RUN_SLOTS_UTC = [{ h: 3, m: 17 }, { h: 15, m: 17 }];   // matches the crons in .github/workflows/tracker.yml
 
   // ---- small DOM helpers ------------------------------------------------------
   function el(tag, attrs, ...children) {
@@ -57,6 +57,7 @@
                      : '<path d="M6 2v8M2.5 6.5L6 10l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
     return s;
   }
+  const TRIGGER = { schedule: "scheduled", push: "after a code change", workflow_dispatch: "started by hand", local: "local" };
   const appBy = (slug) => state.data.apps.find((a) => a.slug === slug);
   const appColor = (slug) => css(`--app-${slug}`) || appBy(slug).color;
   const nf = new Intl.NumberFormat("en-IN");
@@ -207,8 +208,11 @@
   // ---- hero numbers ---------------------------------------------------------------------
   function nextRun() {
     const now = new Date();
-    const n = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), NEXT_RUN_UTC.h, NEXT_RUN_UTC.m));
-    if (n <= now) n.setUTCDate(n.getUTCDate() + 1);
+    const n = RUN_SLOTS_UTC.map((s) => {
+      const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), s.h, s.m));
+      if (t <= now) t.setUTCDate(t.getUTCDate() + 1);
+      return t;
+    }).sort((a, b) => a - b)[0];
     const mins = Math.max(0, Math.round((n - now) / 60000));
     return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
   }
@@ -231,7 +235,7 @@
       stat("Reviews tracked", total, `posted since ${fmtDate(firstWeek, { month: "short", year: "numeric" })}`),
       stat("Tagged by AI", mix.llm || 0, `${fromStars} rating-only from stars${byRules ? `, ${byRules} by rules` : ""}`),
       stat("Runs so far", runCount, runs.first_at ? `on GitHub Actions since ${fmtDate(runs.first_at.slice(0, 10))}` : "on GitHub Actions"),
-      stat("Next run in", nextRun(), "every day at 08:47 IST", { id: "next-run" }));
+      stat("Next scheduled run", nextRun(), "daily at 08:47 and 20:47 IST", { id: "next-run" }));
   }
 
   // ---- app cards ------------------------------------------------------------------------
@@ -685,7 +689,8 @@
     const strip = el("div", { class: "runs-strip", "aria-label": "Last 30 runs, oldest first" },
       runs.recent.map((r) => {
         const color = r.status === "ok" ? css("--good") : css("--critical");
-        const title = `${fmtDate(r.at.slice(0, 10))} ${r.at.slice(11, 16)} UTC: ${r.status === "ok" ? "healthy" : "alert"}${r.simulate ? " (simulated test)" : ""}, ${r.new ?? 0} new`;
+        const how = TRIGGER[r.trigger] ? `, ${TRIGGER[r.trigger]}` : "";
+        const title = `${fmtDate(r.at.slice(0, 10))} ${r.at.slice(11, 16)} UTC${how}: ${r.status === "ok" ? "healthy" : "alert"}${r.simulate ? " (simulated test)" : ""}, ${r.new ?? 0} new`;
         const style = r.simulate ? `background:transparent;box-shadow:inset 0 0 0 2px ${color}` : `background:${color}`;
         return r.url ? el("a", { href: r.url, title, style, "aria-label": title }) : el("span", { title, style });
       }));
@@ -694,7 +699,8 @@
     const tile = (k, v, s) => el("div", { class: "tile" }, el("div", { class: "stat-label" }, k), el("div", { class: "v" }, v), s ? el("div", { class: "s" }, s) : null);
     const parts = [
       el("div", { class: "health-tiles" },
-        tile("Last run", ago(last.started_at), last.run_url ? el("a", { href: last.run_url }, "View logs ↗") : null),
+        tile("Last run", ago(last.started_at), el("span", null, TRIGGER[last.trigger] ? `${TRIGGER[last.trigger][0].toUpperCase()}${TRIGGER[last.trigger].slice(1)} · ` : "",
+          last.run_url ? el("a", { href: last.run_url }, "View logs ↗") : null)),
         tile("Last healthy run", runs.last_ok_at ? ago(runs.last_ok_at) : "never", null),
         tile("New reviews last run", String(last.totals ? last.totals.new : 0), last.totals ? `${nf.format(last.totals.stored)} stored in total` : null),
         tile("AI tagger", t.llm_status || "–", t.llm_model || (t.llm_status === "not needed" ? "no new written reviews to tag" : null))),

@@ -14,7 +14,12 @@ name: Daily reviews tracker
 
 on:
   schedule:
-    - cron: "17 3 * * *"        # 03:17 UTC = 08:47 IST, every day (off the busy :00 slot)
+    # Twice a day, off the busy :00 slot. GitHub can start scheduled runs hours
+    # late or drop one under load; the second slot makes sure every calendar day
+    # still gets a run. A repeat run is harmless: reviews are stored once, and a
+    # quiet run reads one page per app.
+    - cron: "17 3 * * *"        # 03:17 UTC = 08:47 IST
+    - cron: "17 15 * * *"       # 15:17 UTC = 20:47 IST
   workflow_dispatch:
     inputs:
       simulate:

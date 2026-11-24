@@ -837,7 +837,8 @@
   "tag_source": "llm",
   "tag_model": "gemini:gemini-3.5-flash-lite",
   "tag_reason": "App not working, giving errors, and poor support.",
-  "tag_version": "llm-v1"
+  "tag_version": "llm-v1",
+  "removed_on": "2026-11-24"
  },
  {
   "id": "1497072",

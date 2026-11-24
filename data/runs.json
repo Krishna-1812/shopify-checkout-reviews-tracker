@@ -1972,5 +1972,98 @@
     "message": "crawl failed: https://apps.shopify.com/simpl-checkout/reviews?sort_by=newest&page=1 -> HTTP 404"
    }
   ]
+ },
+ {
+  "run_id": "45514090606",
+  "run_url": "https://github.com/Krishna-1812/shopify-checkout-reviews-tracker/actions/runs/45514090606",
+  "trigger": "schedule",
+  "simulate": null,
+  "started_at": "2026-11-24T23:56:34+00:00",
+  "finished_at": "2026-11-24T23:56:35+00:00",
+  "apps": {
+   "kwikcheckout": {
+    "mode": "incremental",
+    "pages_fetched": 1,
+    "parsed": 10,
+    "first_page_count": 10,
+    "declared_total": 398,
+    "overall_rating": 4.6,
+    "rating_counts": {
+     "5": 363,
+     "4": 11,
+     "3": 2,
+     "2": 0,
+     "1": 22
+    },
+    "malformed": 0,
+    "new": 0,
+    "edited": 0,
+    "stored_total": 400,
+    "removed": 0,
+    "removed_total": 2,
+    "error": null
+   },
+   "razorpay-checkout": {
+    "mode": "incremental",
+    "pages_fetched": 1,
+    "parsed": 10,
+    "first_page_count": 10,
+    "declared_total": 40,
+    "overall_rating": 1.9,
+    "rating_counts": {
+     "5": 12,
+     "4": 6,
+     "3": 0,
+     "2": 1,
+     "1": 21
+    },
+    "malformed": 0,
+    "new": 0,
+    "edited": 0,
+    "stored_total": 40,
+    "removed": 0,
+    "removed_total": 0,
+    "error": null
+   },
+   "simpl-checkout": {
+    "mode": "full",
+    "pages_fetched": 0,
+    "parsed": 0,
+    "first_page_count": null,
+    "declared_total": null,
+    "overall_rating": null,
+    "rating_counts": null,
+    "malformed": 0,
+    "new": 0,
+    "edited": 0,
+    "stored_total": 0,
+    "removed": 0,
+    "removed_total": 0,
+    "error": "https://apps.shopify.com/simpl-checkout/reviews?sort_by=newest&page=1 -> HTTP 404"
+   }
+  },
+  "totals": {
+   "parsed": 20,
+   "new": 0,
+   "edited": 0,
+   "stored": 440
+  },
+  "tagging": {
+   "llm_tagged": 0,
+   "rules_tagged": 0,
+   "no_text_tagged": 0,
+   "pending_upgrade": 0,
+   "llm_calls": 0,
+   "llm_model": null,
+   "llm_status": "not needed"
+  },
+  "status": "alert",
+  "problems": [
+   {
+    "level": "error",
+    "app": "simpl-checkout",
+    "message": "crawl failed: https://apps.shopify.com/simpl-checkout/reviews?sort_by=newest&page=1 -> HTTP 404"
+   }
+  ]
  }
 ]
